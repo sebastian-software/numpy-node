@@ -228,11 +228,28 @@ export {
   corrcoef,
 } from './statistics/index.js';
 
+// Linear Algebra
+export {
+  dot,
+  matmul,
+  inv,
+  det,
+  trace,
+  solve,
+  eigvals,
+  eig,
+  qr,
+  norm,
+  matrix_rank,
+  cond,
+} from './linalg/index.js';
+
 // Default export as np-like namespace
 import { NDArray, slice } from './core/index.js';
 import * as creation from './creation/index.js';
 import * as ops from './ops/index.js';
 import * as statistics from './statistics/index.js';
+import * as linalg from './linalg/index.js';
 
 /**
  * NumPy-like namespace object
@@ -248,6 +265,9 @@ const np = {
   ...ops,
   // Statistics
   ...statistics,
+  // Linear Algebra
+  linalg,
+  ...linalg,
 };
 
 export default np;
