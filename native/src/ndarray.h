@@ -80,9 +80,10 @@ public:
     int64_t size() const;
     bool is_contiguous() const;
 
-private:
+    // Constructor reference for creating new instances
     static Napi::FunctionReference constructor;
 
+private:
     void* data_;
     std::vector<int64_t> shape_;
     std::vector<int64_t> strides_;

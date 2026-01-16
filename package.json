@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "build:native": "cmake-js compile",
+    "build:native": "cmake-js compile -d native -O build",
     "build:all": "pnpm build:native && pnpm build",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -66,5 +66,9 @@
     "node-addon-api": {
       "optional": true
     }
+  },
+  "cmake-js": {
+    "directory": "native",
+    "out": "build"
   }
 }
