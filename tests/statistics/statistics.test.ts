@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { array, mean, std, NDArray } from '../../src/index.js';
+import { array, mean, std, variance, median, NDArray } from '../../src/index.js';
 
 describe('mean', () => {
   it('should compute mean of 1D array', () => {
@@ -60,13 +60,43 @@ describe('std', () => {
   });
 });
 
+describe('variance', () => {
+  it('should compute population variance of 1D array', () => {
+    const a = array([1, 2, 3, 4, 5]);
+    expect(variance(a)).toBeCloseTo(2, 10);
+  });
+
+  it('should compute variance along axis 0', () => {
+    const a = array([
+      [1, 2, 3],
+      [4, 5, 6],
+    ]);
+    const result = variance(a, 0);
+    if (typeof result === 'number') {
+      throw new Error('Expected NDArray');
+    }
+    const expected = 2.25; // ((4-2.5)^2 + (1-2.5)^2) / 2 = 2.25
+    for (const val of result) {
+      expect(val).toBeCloseTo(expected, 10);
+    }
+  });
+});
+
+describe('median', () => {
+  it('should compute median of odd-length array', () => {
+    const a = array([3, 1, 4, 1, 5]);
+    expect(median(a)).toBe(3);
+  });
+
+  it('should compute median of even-length array', () => {
+    const a = array([1, 2, 3, 4]);
+    expect(median(a)).toBe(2.5);
+  });
+});
+
 // TODO: Add tests for these functions when implemented in native module:
-// - average
-// - variance
-// - median
 // - percentile
 // - quantile
 // - histogram
-// - histogram2d
 // - cov
 // - corrcoef

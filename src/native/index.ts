@@ -44,6 +44,8 @@ export {
   sum,
   mean,
   std,
+  variance,
+  median,
   min,
   max,
   prod,

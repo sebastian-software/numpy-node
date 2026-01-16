@@ -128,13 +128,64 @@ describe('NDArray', () => {
       expect(values).toEqual([1, 2, 3]);
     });
   });
+
+  describe('element assignment', () => {
+    it('should set 1D array element with set()', () => {
+      const arr = array([1, 2, 3, 4, 5]);
+      arr.set([2], 99);
+      expect(arr.at(2)).toBe(99);
+    });
+
+    it('should set 2D array element with set()', () => {
+      const arr = array([[1, 2, 3], [4, 5, 6]]);
+      arr.set([1, 1], 99);
+      expect(arr.at(1, 1)).toBe(99);
+    });
+  });
+
+  describe('flatten and ravel', () => {
+    it('should flatten 2D array', () => {
+      const arr = array([[1, 2, 3], [4, 5, 6]]);
+      const flat = arr.flatten();
+      expect(flat.shape).toEqual([6]);
+      expect(flat.toFlatArray()).toEqual([1, 2, 3, 4, 5, 6]);
+    });
+
+    it('should ravel 2D array (alias for flatten)', () => {
+      const arr = array([[1, 2], [3, 4]]);
+      const flat = arr.ravel();
+      expect(flat.shape).toEqual([4]);
+      expect(flat.toFlatArray()).toEqual([1, 2, 3, 4]);
+    });
+  });
+
+  describe('fill', () => {
+    it('should fill array with value', () => {
+      const arr = zeros([3]);
+      arr.fill(7);
+      expect(arr.toFlatArray()).toEqual([7, 7, 7]);
+    });
+  });
+
+  describe('squeeze', () => {
+    it('should remove axes with size 1', () => {
+      const arr = array([[[1], [2], [3]]]);
+      expect(arr.shape).toEqual([1, 3, 1]);
+      const squeezed = arr.squeeze();
+      expect(squeezed.shape).toEqual([3]);
+    });
+
+    it('should remove specific axis', () => {
+      const arr = array([[[1, 2, 3]]]);
+      expect(arr.shape).toEqual([1, 1, 3]);
+      const squeezed = arr.squeeze(0);
+      expect(squeezed.shape).toEqual([1, 3]);
+    });
+  });
 });
 
-// Note: The following features are not yet available in the native module:
-// - set() method for element assignment
-// - flatten(), squeeze(), expandDims() methods
+// Note: The following features could be added in the future:
 // - slice() for array slicing
-// - astype() for dtype conversion
 // - equals(), allClose() for comparison
 // - entries() iterator
 // - negative indices in at()

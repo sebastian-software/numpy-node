@@ -98,7 +98,9 @@ export function cholesky(a: NDArray): NDArray {
  * Matrix/vector norm
  */
 export function norm(a: NDArray, ord?: number | 'fro'): number {
-  return linalg.norm(a._native, ord);
+  // Convert JavaScript Infinity to string 'inf' for native handling
+  const normOrd = ord === Infinity ? 'inf' : ord;
+  return linalg.norm(a._native, normOrd);
 }
 
 /**

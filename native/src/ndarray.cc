@@ -73,6 +73,8 @@ Napi::Object NativeNDArray::Init(Napi::Env env, Napi::Object exports) {
         InstanceMethod<&NativeNDArray::Reshape>("reshape"),
         InstanceMethod<&NativeNDArray::Transpose>("transpose"),
         InstanceMethod<&NativeNDArray::AsContiguous>("asContiguous"),
+        InstanceMethod<&NativeNDArray::SetValue>("set"),
+        InstanceMethod<&NativeNDArray::Fill>("fill"),
     });
 
     constructor = Napi::Persistent(func);
@@ -343,6 +345,98 @@ Napi::Value NativeNDArray::AsContiguous(const Napi::CallbackInfo& info) {
     }
     // TODO: Implement proper contiguous copy for non-contiguous arrays
     return Copy(info);
+}
+
+void NativeNDArray::SetValue(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected indices and value").ThrowAsJavaScriptException();
+        return;
+    }
+
+    // Get indices array
+    Napi::Array jsIndices = info[0].As<Napi::Array>();
+    double value = info[1].As<Napi::Number>().DoubleValue();
+
+    // Calculate flat index from indices
+    int64_t flatIndex = 0;
+    size_t elemSize = dtype_size(dtype_);
+    for (uint32_t i = 0; i < jsIndices.Length(); i++) {
+        int64_t idx = jsIndices.Get(i).As<Napi::Number>().Int64Value();
+        flatIndex += idx * (strides_[i] / elemSize);
+    }
+
+    // Set value based on dtype
+    switch (dtype_) {
+        case DType::Float64: {
+            static_cast<double*>(data_)[flatIndex] = value;
+            break;
+        }
+        case DType::Float32: {
+            static_cast<float*>(data_)[flatIndex] = static_cast<float>(value);
+            break;
+        }
+        case DType::Int32: {
+            static_cast<int32_t*>(data_)[flatIndex] = static_cast<int32_t>(value);
+            break;
+        }
+        case DType::Int64: {
+            static_cast<int64_t*>(data_)[flatIndex] = static_cast<int64_t>(value);
+            break;
+        }
+        default: {
+            static_cast<double*>(data_)[flatIndex] = value;
+            break;
+        }
+    }
+}
+
+Napi::Value NativeNDArray::Fill(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected fill value").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    double value = info[0].As<Napi::Number>().DoubleValue();
+    int64_t totalSize = size();
+
+    switch (dtype_) {
+        case DType::Float64: {
+            double* data = static_cast<double*>(data_);
+            for (int64_t i = 0; i < totalSize; i++) {
+                data[i] = value;
+            }
+            break;
+        }
+        case DType::Float32: {
+            float* data = static_cast<float*>(data_);
+            float fval = static_cast<float>(value);
+            for (int64_t i = 0; i < totalSize; i++) {
+                data[i] = fval;
+            }
+            break;
+        }
+        case DType::Int32: {
+            int32_t* data = static_cast<int32_t*>(data_);
+            int32_t ival = static_cast<int32_t>(value);
+            for (int64_t i = 0; i < totalSize; i++) {
+                data[i] = ival;
+            }
+            break;
+        }
+        default: {
+            double* data = static_cast<double*>(data_);
+            for (int64_t i = 0; i < totalSize; i++) {
+                data[i] = value;
+            }
+            break;
+        }
+    }
+
+    return info.This();
 }
 
 // Creation functions

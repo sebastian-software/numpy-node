@@ -180,6 +180,55 @@ export class NDArray {
   }
 
   /**
+   * Set element at indices
+   */
+  set(indices: number[], value: number): void {
+    this._native.set(indices, value);
+  }
+
+  /**
+   * Return a flattened copy of the array
+   */
+  flatten(): NDArray {
+    return this.reshape([this.size]);
+  }
+
+  /**
+   * Return a flattened view/copy of the array (alias for flatten)
+   */
+  ravel(): NDArray {
+    return this.flatten();
+  }
+
+  /**
+   * Fill array with a scalar value
+   */
+  fill(value: number): NDArray {
+    this._native.fill(value);
+    return this;
+  }
+
+  /**
+   * Remove axes with size 1
+   */
+  squeeze(axis?: number): NDArray {
+    const newShape: number[] = [];
+    for (let i = 0; i < this.shape.length; i++) {
+      if (axis !== undefined) {
+        if (i === axis && this.shape[i] === 1) {
+          continue;
+        }
+        newShape.push(this.shape[i]!);
+      } else {
+        if (this.shape[i] !== 1) {
+          newShape.push(this.shape[i]!);
+        }
+      }
+    }
+    return this.reshape(newShape.length > 0 ? newShape : [1]);
+  }
+
+  /**
    * Convert to nested JavaScript array
    */
   toArray(): unknown {

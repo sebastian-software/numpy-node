@@ -1,5 +1,6 @@
 #include "linalg.h"
 #include <cmath>
+#include <limits>
 #include <cstring>
 #include <algorithm>
 
@@ -17,6 +18,11 @@
 
         double ddot_(const int* n, const double* x, const int* incx,
                     const double* y, const int* incy);
+
+        void dgemv_(const char* trans, const int* m, const int* n,
+                   const double* alpha, const double* a, const int* lda,
+                   const double* x, const int* incx,
+                   const double* beta, double* y, const int* incy);
 
         // LAPACK functions
         void dgetrf_(const int* m, const int* n, double* a, const int* lda,
@@ -163,6 +169,91 @@ Napi::Value Dot(const Napi::CallbackInfo& info) {
     // 2D case: matrix multiplication
     if (a->ndim() == 2 && b->ndim() == 2) {
         return Matmul(info);
+    }
+
+    // Matrix-vector: (m, k) @ (k,) -> (m,)
+    if (a->ndim() == 2 && b->ndim() == 1) {
+        int m = static_cast<int>(a->shape()[0]);
+        int k = static_cast<int>(a->shape()[1]);
+
+        if (k != static_cast<int>(b->size())) {
+            Napi::Error::New(env, "Matrix columns must match vector length").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Create result array of shape (m,)
+        Napi::Array resultShape = Napi::Array::New(env, 1);
+        resultShape.Set(uint32_t(0), Napi::Number::New(env, m));
+        Napi::Object result = NativeNDArray::constructor.New({resultShape, Napi::String::New(env, "float64")});
+        NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+
+        double* dataA = static_cast<double*>(a->data());
+        double* dataB = static_cast<double*>(b->data());
+        double* dataC = static_cast<double*>(c->data());
+
+#if defined(USE_ACCELERATE)
+        // y = alpha * A * x + beta * y (row-major)
+        cblas_dgemv(CblasRowMajor, CblasNoTrans, m, k, 1.0, dataA, k, dataB, 1, 0.0, dataC, 1);
+#elif defined(USE_OPENBLAS)
+        // For Fortran dgemv, we need column-major, but our data is row-major
+        // So we compute A^T * x with column-major interpretation
+        char trans = 'T';
+        double alpha = 1.0, beta = 0.0;
+        int incx = 1, incy = 1;
+        dgemv_(&trans, &k, &m, &alpha, dataA, &k, dataB, &incx, &beta, dataC, &incy);
+#else
+        // Manual computation
+        for (int i = 0; i < m; i++) {
+            double sum = 0.0;
+            for (int j = 0; j < k; j++) {
+                sum += dataA[i * k + j] * dataB[j];
+            }
+            dataC[i] = sum;
+        }
+#endif
+        return result;
+    }
+
+    // Vector-matrix: (k,) @ (k, n) -> (n,)
+    if (a->ndim() == 1 && b->ndim() == 2) {
+        int k = static_cast<int>(a->size());
+        int n = static_cast<int>(b->shape()[1]);
+
+        if (k != static_cast<int>(b->shape()[0])) {
+            Napi::Error::New(env, "Vector length must match matrix rows").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Create result array of shape (n,)
+        Napi::Array resultShape = Napi::Array::New(env, 1);
+        resultShape.Set(uint32_t(0), Napi::Number::New(env, n));
+        Napi::Object result = NativeNDArray::constructor.New({resultShape, Napi::String::New(env, "float64")});
+        NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+
+        double* dataA = static_cast<double*>(a->data());
+        double* dataB = static_cast<double*>(b->data());
+        double* dataC = static_cast<double*>(c->data());
+
+#if defined(USE_ACCELERATE)
+        // y = alpha * A^T * x + beta * y (row-major), but we want x^T * A = (A^T * x)^T
+        // In row-major: y = A^T * x where A is (k, n), x is (k,), y is (n,)
+        cblas_dgemv(CblasRowMajor, CblasTrans, k, n, 1.0, dataB, n, dataA, 1, 0.0, dataC, 1);
+#elif defined(USE_OPENBLAS)
+        char trans = 'N';
+        double alpha = 1.0, beta = 0.0;
+        int incx = 1, incy = 1;
+        dgemv_(&trans, &n, &k, &alpha, dataB, &n, dataA, &incx, &beta, dataC, &incy);
+#else
+        // Manual computation
+        for (int j = 0; j < n; j++) {
+            double sum = 0.0;
+            for (int i = 0; i < k; i++) {
+                sum += dataA[i] * dataB[i * n + j];
+            }
+            dataC[j] = sum;
+        }
+#endif
+        return result;
     }
 
     Napi::Error::New(env, "dot only supports 1D and 2D arrays").ThrowAsJavaScriptException();
@@ -368,16 +459,59 @@ Napi::Value Norm(const Napi::CallbackInfo& info) {
     }
 
     NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-
-    // Default: Frobenius/L2 norm
     double* data = static_cast<double*>(a->data());
-    double sum = 0.0;
+    int64_t size = a->size();
 
-    for (int64_t i = 0; i < a->size(); i++) {
-        sum += data[i] * data[i];
+    // Determine norm type from second argument
+    // Default: L2 for vectors, Frobenius for matrices (both compute same way)
+    int normType = 2; // 0=L1, 1=Inf, 2=L2/Frobenius
+
+    if (info.Length() > 1 && !info[1].IsUndefined()) {
+        if (info[1].IsString()) {
+            std::string ordStr = info[1].As<Napi::String>().Utf8Value();
+            if (ordStr == "fro") {
+                normType = 2; // Frobenius = L2 for flattened data
+            } else if (ordStr == "inf" || ordStr == "Infinity") {
+                normType = 1; // Infinity norm (string form)
+            }
+        } else if (info[1].IsNumber()) {
+            double ord = info[1].As<Napi::Number>().DoubleValue();
+            if (ord == 1.0) {
+                normType = 0; // L1
+            } else if (std::isinf(ord)) {
+                normType = 1; // Infinity
+            } else {
+                normType = 2; // L2 (default for ord=2 or other)
+            }
+        }
     }
 
-    return Napi::Number::New(env, std::sqrt(sum));
+    double result = 0.0;
+
+    switch (normType) {
+        case 0: // L1 norm: sum of absolute values
+            for (int64_t i = 0; i < size; i++) {
+                result += std::abs(data[i]);
+            }
+            break;
+        case 1: // Infinity norm: max absolute value
+            for (int64_t i = 0; i < size; i++) {
+                double absVal = std::abs(data[i]);
+                if (absVal > result) {
+                    result = absVal;
+                }
+            }
+            break;
+        case 2: // L2/Frobenius norm: sqrt of sum of squares
+        default:
+            for (int64_t i = 0; i < size; i++) {
+                result += data[i] * data[i];
+            }
+            result = std::sqrt(result);
+            break;
+    }
+
+    return Napi::Number::New(env, result);
 }
 
 Napi::Value Trace(const Napi::CallbackInfo& info) {

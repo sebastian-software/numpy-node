@@ -48,7 +48,7 @@ describe('dot', () => {
     ]);
   });
 
-  it.skip('should compute matrix-vector product (TODO: native implementation)', () => {
+  it('should compute matrix-vector product', () => {
     const a = array([
       [1, 2, 3],
       [4, 5, 6],
@@ -59,7 +59,7 @@ describe('dot', () => {
     expect(result.toFlatArray()).toEqual([14, 32]);
   });
 
-  it.skip('should compute vector-matrix product (TODO: native implementation)', () => {
+  it('should compute vector-matrix product', () => {
     const a = array([1, 2]);
     const b = array([
       [1, 2, 3],
@@ -252,18 +252,17 @@ describe('norm', () => {
     expect(norm(a)).toBe(5);
   });
 
-  // Note: L1 and infinity norms may not be fully supported in native
-  it.skip('should compute L1 norm of vector (TODO: verify native support)', () => {
+  it('should compute L1 norm of vector', () => {
     const a = array([1, -2, 3]);
     expect(norm(a, 1)).toBe(6);
   });
 
-  it.skip('should compute infinity norm of vector (TODO: verify native support)', () => {
+  it('should compute infinity norm of vector', () => {
     const a = array([1, -5, 3]);
     expect(norm(a, Infinity)).toBe(5);
   });
 
-  it.skip('should compute Frobenius norm of matrix (TODO: fix native 2D)', () => {
+  it('should compute Frobenius norm of matrix', () => {
     const a = array([
       [1, 2],
       [3, 4],

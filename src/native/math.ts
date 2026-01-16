@@ -130,6 +130,24 @@ export function std(a: NDArray, axis?: number): NDArray | number {
 }
 
 /**
+ * Variance of array elements
+ */
+export function variance(a: NDArray, axis?: number): NDArray | number {
+  const result = math.var(a._native, axis);
+  if (typeof result === 'number') {
+    return result;
+  }
+  return new NDArray(result);
+}
+
+/**
+ * Median of array elements
+ */
+export function median(a: NDArray): number {
+  return math.median(a._native);
+}
+
+/**
  * Minimum of array elements
  */
 export function min(a: NDArray, axis?: number): NDArray | number {

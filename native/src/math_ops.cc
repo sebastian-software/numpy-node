@@ -828,6 +828,147 @@ Napi::Value Std(const Napi::CallbackInfo& info) {
     return Napi::Number::New(env, std::sqrt(var));
 }
 
+Napi::Value Var(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* data = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+        const auto& shape = a->shape();
+        int ndim = static_cast<int>(shape.size());
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        int64_t axisSize = shape[axis];
+
+        std::vector<int64_t> resultShape;
+        for (int i = 0; i < ndim; i++) {
+            if (i != axis) {
+                resultShape.push_back(shape[i]);
+            }
+        }
+
+        Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+        for (size_t i = 0; i < resultShape.size(); i++) {
+            jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({jsResultShape, Napi::String::New(env, "float64")});
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* resultData = static_cast<double*>(resultArr->data());
+
+        // First compute mean along axis
+        std::vector<double> meanData(resultArr->size(), 0.0);
+
+        std::vector<int64_t> indices(ndim, 0);
+        for (int64_t flatIdx = 0; flatIdx < size; flatIdx++) {
+            int64_t temp = flatIdx;
+            for (int i = ndim - 1; i >= 0; i--) {
+                indices[i] = temp % shape[i];
+                temp /= shape[i];
+            }
+
+            std::vector<int64_t> resultIndices;
+            for (int i = 0; i < ndim; i++) {
+                if (i != axis) {
+                    resultIndices.push_back(indices[i]);
+                }
+            }
+
+            int64_t resultFlatIdx = computeFlatIndex(resultIndices, resultShape);
+            meanData[resultFlatIdx] += data[flatIdx];
+        }
+
+        for (size_t i = 0; i < meanData.size(); i++) {
+            meanData[i] /= axisSize;
+        }
+
+        // Now compute variance
+        std::fill(resultData, resultData + resultArr->size(), 0.0);
+
+        for (int64_t flatIdx = 0; flatIdx < size; flatIdx++) {
+            int64_t temp = flatIdx;
+            for (int i = ndim - 1; i >= 0; i--) {
+                indices[i] = temp % shape[i];
+                temp /= shape[i];
+            }
+
+            std::vector<int64_t> resultIndices;
+            for (int i = 0; i < ndim; i++) {
+                if (i != axis) {
+                    resultIndices.push_back(indices[i]);
+                }
+            }
+
+            int64_t resultFlatIdx = computeFlatIndex(resultIndices, resultShape);
+            double diff = data[flatIdx] - meanData[resultFlatIdx];
+            resultData[resultFlatIdx] += diff * diff;
+        }
+
+        // Divide by axis size (no sqrt for variance)
+        for (int64_t i = 0; i < resultArr->size(); i++) {
+            resultData[i] = resultData[i] / axisSize;
+        }
+
+        return result;
+    }
+
+    // No axis - reduce over all elements
+    double mean = 0.0;
+    for (int64_t i = 0; i < size; i++) {
+        mean += data[i];
+    }
+    mean /= size;
+
+    double var = 0.0;
+    for (int64_t i = 0; i < size; i++) {
+        double diff = data[i] - mean;
+        var += diff * diff;
+    }
+    var /= size;
+
+    return Napi::Number::New(env, var);
+}
+
+Napi::Value Median(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* data = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    // Copy data and sort
+    std::vector<double> sorted(data, data + size);
+    std::sort(sorted.begin(), sorted.end());
+
+    // Compute median
+    double median;
+    if (size % 2 == 0) {
+        median = (sorted[size / 2 - 1] + sorted[size / 2]) / 2.0;
+    } else {
+        median = sorted[size / 2];
+    }
+
+    return Napi::Number::New(env, median);
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Napi::Object math = Napi::Object::New(env);
 
@@ -849,6 +990,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     math.Set("min", Napi::Function::New(env, Min));
     math.Set("mean", Napi::Function::New(env, Mean));
     math.Set("std", Napi::Function::New(env, Std));
+    math.Set("var", Napi::Function::New(env, Var));
+    math.Set("median", Napi::Function::New(env, Median));
 
     exports.Set("math", math);
     return exports;

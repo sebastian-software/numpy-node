@@ -69,6 +69,8 @@ public:
     Napi::Value Reshape(const Napi::CallbackInfo& info);
     Napi::Value Transpose(const Napi::CallbackInfo& info);
     Napi::Value AsContiguous(const Napi::CallbackInfo& info);
+    void SetValue(const Napi::CallbackInfo& info);
+    Napi::Value Fill(const Napi::CallbackInfo& info);
 
     // Data access for native operations
     void* data() { return data_; }
