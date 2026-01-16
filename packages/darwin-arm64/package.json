@@ -1,5 +1,5 @@
 {
-  "name": "@aspect/numpy-node-darwin-arm64",
+  "name": "@numpy-node/darwin-arm64",
   "version": "0.1.0",
   "description": "numpy-node native binary for macOS ARM64 (Apple Silicon)",
   "os": [

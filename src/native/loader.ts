@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 function getPlatformPackage(): string {
   const platform = process.platform;
   const arch = process.arch;
-  return `@aspect/numpy-node-${platform}-${arch}`;
+  return `@numpy-node/${platform}-${arch}`;
 }
 
 /**

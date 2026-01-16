@@ -73,11 +73,11 @@
     }
   },
   "optionalDependencies": {
-    "@aspect/numpy-node-darwin-arm64": "0.1.0",
-    "@aspect/numpy-node-darwin-x64": "0.1.0",
-    "@aspect/numpy-node-linux-x64": "0.1.0",
-    "@aspect/numpy-node-linux-arm64": "0.1.0",
-    "@aspect/numpy-node-win32-x64": "0.1.0"
+    "@numpy-node/darwin-arm64": "0.1.0",
+    "@numpy-node/darwin-x64": "0.1.0",
+    "@numpy-node/linux-x64": "0.1.0",
+    "@numpy-node/linux-arm64": "0.1.0",
+    "@numpy-node/win32-x64": "0.1.0"
   },
   "cmake-js": {
     "directory": "native",

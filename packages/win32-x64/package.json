@@ -1,5 +1,5 @@
 {
-  "name": "@aspect/numpy-node-win32-x64",
+  "name": "@numpy-node/win32-x64",
   "version": "0.1.0",
   "description": "numpy-node native binary for Windows x64",
   "os": [
