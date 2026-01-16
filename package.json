@@ -1,0 +1,70 @@
+{
+  "name": "numpy-ts",
+  "version": "0.1.0",
+  "description": "A high-performance TypeScript implementation of NumPy with C++ N-API backend",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "prebuilds"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "build:native": "cmake-js compile",
+    "build:all": "pnpm build:native && pnpm build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "typecheck": "tsc --noEmit",
+    "bench": "vitest bench",
+    "clean": "rm -rf dist build",
+    "prepublishOnly": "pnpm build:all"
+  },
+  "keywords": [
+    "numpy",
+    "ndarray",
+    "array",
+    "matrix",
+    "linear-algebra",
+    "scientific-computing",
+    "mathematics",
+    "statistics"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "cmake-js": "^7.3.0",
+    "eslint": "^9.18.0",
+    "node-addon-api": "^8.3.0",
+    "prettier": "^3.4.0",
+    "tinybench": "^3.0.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^2.1.0"
+  },
+  "peerDependencies": {
+    "node-addon-api": "^8.3.0"
+  },
+  "peerDependenciesMeta": {
+    "node-addon-api": {
+      "optional": true
+    }
+  }
+}
