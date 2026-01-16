@@ -1,8 +1,5 @@
 /**
  * Tests for statistical functions
- *
- * Note: Many statistics functions are not yet available in the native module.
- * This test file only tests the functions that are currently implemented.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -22,7 +19,7 @@ describe('mean', () => {
     expect(mean(a)).toBe(3.5);
   });
 
-  it.skip('should compute mean along axis 0 (TODO: axis reduction returns wrong type)', () => {
+  it('should compute mean along axis 0', () => {
     const a = array([
       [1, 2, 3],
       [4, 5, 6],
@@ -31,7 +28,7 @@ describe('mean', () => {
     expect(result.toFlatArray()).toEqual([2.5, 3.5, 4.5]);
   });
 
-  it.skip('should compute mean along axis 1 (TODO: axis reduction returns wrong type)', () => {
+  it('should compute mean along axis 1', () => {
     const a = array([
       [1, 2, 3],
       [4, 5, 6],
@@ -47,7 +44,7 @@ describe('std', () => {
     expect(std(a)).toBeCloseTo(Math.sqrt(2), 10);
   });
 
-  it.skip('should compute std along axis (TODO: axis reduction returns wrong type)', () => {
+  it('should compute std along axis 0', () => {
     const a = array([
       [1, 2, 3],
       [4, 5, 6],
@@ -56,7 +53,7 @@ describe('std', () => {
     if (typeof result === 'number') {
       throw new Error('Expected NDArray');
     }
-    const expected = Math.sqrt(2.25);
+    const expected = 1.5; // (4-1)/2 = 1.5 for each column
     for (const val of result) {
       expect(val).toBeCloseTo(expected, 10);
     }

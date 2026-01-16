@@ -273,6 +273,17 @@ Napi::Value Abs(const Napi::CallbackInfo& info) {
     return UnaryOp(info, [](double a) { return std::abs(a); });
 }
 
+// Helper function to compute flat index from multi-dimensional indices
+static int64_t computeFlatIndex(const std::vector<int64_t>& indices, const std::vector<int64_t>& shape) {
+    int64_t flatIndex = 0;
+    int64_t multiplier = 1;
+    for (int i = static_cast<int>(shape.size()) - 1; i >= 0; i--) {
+        flatIndex += indices[i] * multiplier;
+        multiplier *= shape[i];
+    }
+    return flatIndex;
+}
+
 // Reductions
 Napi::Value Sum(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -286,6 +297,64 @@ Napi::Value Sum(const Napi::CallbackInfo& info) {
     double* data = static_cast<double*>(a->data());
     int64_t size = a->size();
 
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+        const auto& shape = a->shape();
+        int ndim = static_cast<int>(shape.size());
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Compute result shape (remove the axis dimension)
+        std::vector<int64_t> resultShape;
+        for (int i = 0; i < ndim; i++) {
+            if (i != axis) {
+                resultShape.push_back(shape[i]);
+            }
+        }
+
+        // Create result array
+        Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+        for (size_t i = 0; i < resultShape.size(); i++) {
+            jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({jsResultShape, Napi::String::New(env, "float64")});
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* resultData = static_cast<double*>(resultArr->data());
+
+        // Initialize result to zero
+        std::fill(resultData, resultData + resultArr->size(), 0.0);
+
+        // Iterate over all elements and accumulate
+        std::vector<int64_t> indices(ndim, 0);
+        for (int64_t flatIdx = 0; flatIdx < size; flatIdx++) {
+            // Compute multi-dimensional indices from flat index
+            int64_t temp = flatIdx;
+            for (int i = ndim - 1; i >= 0; i--) {
+                indices[i] = temp % shape[i];
+                temp /= shape[i];
+            }
+
+            // Compute result index (indices without the axis dimension)
+            std::vector<int64_t> resultIndices;
+            for (int i = 0; i < ndim; i++) {
+                if (i != axis) {
+                    resultIndices.push_back(indices[i]);
+                }
+            }
+
+            int64_t resultFlatIdx = computeFlatIndex(resultIndices, resultShape);
+            resultData[resultFlatIdx] += data[flatIdx];
+        }
+
+        return result;
+    }
+
+    // No axis - reduce over all elements
     double sum = 0.0;
 
 #if defined(USE_ACCELERATE)
@@ -381,6 +450,71 @@ Napi::Value Mean(const Napi::CallbackInfo& info) {
     double* data = static_cast<double*>(a->data());
     int64_t size = a->size();
 
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+        const auto& shape = a->shape();
+        int ndim = static_cast<int>(shape.size());
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        int64_t axisSize = shape[axis];
+
+        // Compute result shape (remove the axis dimension)
+        std::vector<int64_t> resultShape;
+        for (int i = 0; i < ndim; i++) {
+            if (i != axis) {
+                resultShape.push_back(shape[i]);
+            }
+        }
+
+        // Create result array
+        Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+        for (size_t i = 0; i < resultShape.size(); i++) {
+            jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({jsResultShape, Napi::String::New(env, "float64")});
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* resultData = static_cast<double*>(resultArr->data());
+
+        // Initialize result to zero
+        std::fill(resultData, resultData + resultArr->size(), 0.0);
+
+        // Iterate over all elements and accumulate
+        std::vector<int64_t> indices(ndim, 0);
+        for (int64_t flatIdx = 0; flatIdx < size; flatIdx++) {
+            // Compute multi-dimensional indices from flat index
+            int64_t temp = flatIdx;
+            for (int i = ndim - 1; i >= 0; i--) {
+                indices[i] = temp % shape[i];
+                temp /= shape[i];
+            }
+
+            // Compute result index (indices without the axis dimension)
+            std::vector<int64_t> resultIndices;
+            for (int i = 0; i < ndim; i++) {
+                if (i != axis) {
+                    resultIndices.push_back(indices[i]);
+                }
+            }
+
+            int64_t resultFlatIdx = computeFlatIndex(resultIndices, resultShape);
+            resultData[resultFlatIdx] += data[flatIdx];
+        }
+
+        // Divide by axis size to get mean
+        for (int64_t i = 0; i < resultArr->size(); i++) {
+            resultData[i] /= axisSize;
+        }
+
+        return result;
+    }
+
+    // No axis - reduce over all elements
     double mean = 0.0;
 
 #if defined(USE_ACCELERATE)
@@ -407,6 +541,99 @@ Napi::Value Std(const Napi::CallbackInfo& info) {
     double* data = static_cast<double*>(a->data());
     int64_t size = a->size();
 
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+        const auto& shape = a->shape();
+        int ndim = static_cast<int>(shape.size());
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        int64_t axisSize = shape[axis];
+
+        // Compute result shape (remove the axis dimension)
+        std::vector<int64_t> resultShape;
+        for (int i = 0; i < ndim; i++) {
+            if (i != axis) {
+                resultShape.push_back(shape[i]);
+            }
+        }
+
+        // Create result array
+        Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+        for (size_t i = 0; i < resultShape.size(); i++) {
+            jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({jsResultShape, Napi::String::New(env, "float64")});
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* resultData = static_cast<double*>(resultArr->data());
+
+        // First compute mean along axis
+        std::vector<double> meanData(resultArr->size(), 0.0);
+
+        std::vector<int64_t> indices(ndim, 0);
+        for (int64_t flatIdx = 0; flatIdx < size; flatIdx++) {
+            // Compute multi-dimensional indices from flat index
+            int64_t temp = flatIdx;
+            for (int i = ndim - 1; i >= 0; i--) {
+                indices[i] = temp % shape[i];
+                temp /= shape[i];
+            }
+
+            // Compute result index (indices without the axis dimension)
+            std::vector<int64_t> resultIndices;
+            for (int i = 0; i < ndim; i++) {
+                if (i != axis) {
+                    resultIndices.push_back(indices[i]);
+                }
+            }
+
+            int64_t resultFlatIdx = computeFlatIndex(resultIndices, resultShape);
+            meanData[resultFlatIdx] += data[flatIdx];
+        }
+
+        // Divide by axis size to get mean
+        for (size_t i = 0; i < meanData.size(); i++) {
+            meanData[i] /= axisSize;
+        }
+
+        // Now compute variance
+        std::fill(resultData, resultData + resultArr->size(), 0.0);
+
+        for (int64_t flatIdx = 0; flatIdx < size; flatIdx++) {
+            // Compute multi-dimensional indices from flat index
+            int64_t temp = flatIdx;
+            for (int i = ndim - 1; i >= 0; i--) {
+                indices[i] = temp % shape[i];
+                temp /= shape[i];
+            }
+
+            // Compute result index (indices without the axis dimension)
+            std::vector<int64_t> resultIndices;
+            for (int i = 0; i < ndim; i++) {
+                if (i != axis) {
+                    resultIndices.push_back(indices[i]);
+                }
+            }
+
+            int64_t resultFlatIdx = computeFlatIndex(resultIndices, resultShape);
+            double diff = data[flatIdx] - meanData[resultFlatIdx];
+            resultData[resultFlatIdx] += diff * diff;
+        }
+
+        // Divide by axis size and take sqrt
+        for (int64_t i = 0; i < resultArr->size(); i++) {
+            resultData[i] = std::sqrt(resultData[i] / axisSize);
+        }
+
+        return result;
+    }
+
+    // No axis - reduce over all elements
     // Compute mean
     double mean = 0.0;
     for (int64_t i = 0; i < size; i++) {
