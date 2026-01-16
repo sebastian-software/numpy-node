@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node: ['20', '22']
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +64,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libopenblas-dev liblapack-dev
 
+      - name: Install OpenBLAS (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          vcpkg install openblas:x64-windows
+          echo "CMAKE_PREFIX_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+          echo "OPENBLAS_ROOT=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+
       - name: Install dependencies
         run: pnpm install
 
@@ -75,6 +82,45 @@ jobs:
 
       - name: Run tests
         run: pnpm test
+
+  test-bun:
+    name: Test (Bun)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js (for native build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenblas-dev liblapack-dev
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build native module
+        run: pnpm build:native
+
+      - name: Build TypeScript
+        run: pnpm build
+
+      - name: Run tests with Bun
+        run: bun test
 
   coverage:
     name: Coverage

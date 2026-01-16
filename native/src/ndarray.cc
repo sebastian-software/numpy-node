@@ -1,4 +1,5 @@
 #include "ndarray.h"
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 #include <numeric>
