@@ -38,8 +38,9 @@ function loadNativeModule(): NativeModule {
 
   throw new Error(
     'Failed to load numpy-node native module. ' +
-    'Make sure to run `pnpm build:native` first.\n' +
-    'Tried paths:\n' + errors.join('\n')
+      'Make sure to run `pnpm build:native` first.\n' +
+      'Tried paths:\n' +
+      errors.join('\n')
   );
 }
 
@@ -58,6 +59,8 @@ export interface NativeNDArray {
   reshape(shape: number[]): NativeNDArray;
   transpose(axes?: number[]): NativeNDArray;
   asContiguous(): NativeNDArray;
+  set(indices: number[], value: number): void;
+  fill(value: number): NativeNDArray;
 }
 
 /**
@@ -106,6 +109,8 @@ export interface MathModule {
   prod(a: NativeNDArray, axis?: number): NativeNDArray | number;
   mean(a: NativeNDArray, axis?: number): NativeNDArray | number;
   std(a: NativeNDArray, axis?: number): NativeNDArray | number;
+  var(a: NativeNDArray, axis?: number): NativeNDArray | number;
+  median(a: NativeNDArray): number;
   min(a: NativeNDArray, axis?: number): NativeNDArray | number;
   max(a: NativeNDArray, axis?: number): NativeNDArray | number;
   abs(a: NativeNDArray): NativeNDArray;

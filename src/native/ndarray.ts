@@ -43,12 +43,7 @@ export type TypedArray =
 /**
  * Array input types for creating NDArrays
  */
-export type ArrayInput =
-  | number[]
-  | number[][]
-  | number[][][]
-  | TypedArray
-  | NDArray;
+export type ArrayInput = number[] | number[][] | number[][][] | TypedArray | NDArray;
 
 /**
  * NDArray class - wraps native NativeNDArray
@@ -203,7 +198,7 @@ export class NDArray {
   /**
    * Fill array with a scalar value
    */
-  fill(value: number): NDArray {
+  fill(value: number): this {
     this._native.fill(value);
     return this;
   }
@@ -244,7 +239,7 @@ export class NDArray {
 
     // Convert byte strides to element strides
     const elemSize = this.elementSize;
-    const elemStrides = this.strides.map(s => s / elemSize);
+    const elemStrides = this.strides.map((s) => s / elemSize);
 
     const buildArray = (dim: number, offset: number): unknown => {
       if (dim === this.ndim - 1) {
@@ -283,18 +278,30 @@ export class NDArray {
   toTypedArray(): TypedArray {
     const buffer = this._native.data;
     switch (this.dtype) {
-      case 'int8': return new Int8Array(buffer);
-      case 'int16': return new Int16Array(buffer);
-      case 'int32': return new Int32Array(buffer);
-      case 'int64': return new BigInt64Array(buffer);
-      case 'uint8': return new Uint8Array(buffer);
-      case 'uint16': return new Uint16Array(buffer);
-      case 'uint32': return new Uint32Array(buffer);
-      case 'uint64': return new BigUint64Array(buffer);
-      case 'float32': return new Float32Array(buffer);
-      case 'float64': return new Float64Array(buffer);
-      case 'bool': return new Uint8Array(buffer);
-      default: return new Float64Array(buffer);
+      case 'int8':
+        return new Int8Array(buffer);
+      case 'int16':
+        return new Int16Array(buffer);
+      case 'int32':
+        return new Int32Array(buffer);
+      case 'int64':
+        return new BigInt64Array(buffer);
+      case 'uint8':
+        return new Uint8Array(buffer);
+      case 'uint16':
+        return new Uint16Array(buffer);
+      case 'uint32':
+        return new Uint32Array(buffer);
+      case 'uint64':
+        return new BigUint64Array(buffer);
+      case 'float32':
+        return new Float32Array(buffer);
+      case 'float64':
+        return new Float64Array(buffer);
+      case 'bool':
+        return new Uint8Array(buffer);
+      default:
+        return new Float64Array(buffer);
     }
   }
 
@@ -411,7 +418,7 @@ export function full(shape: number[], value: number, dtype: DTypeName = 'float64
 export function arange(
   startOrStop: number,
   stop?: number,
-  step: number = 1,
+  step = 1,
   dtype: DTypeName = 'float64'
 ): NDArray {
   if (stop === undefined) {
@@ -426,7 +433,7 @@ export function arange(
 export function linspace(
   start: number,
   stop: number,
-  num: number = 50,
+  num = 50,
   dtype: DTypeName = 'float64'
 ): NDArray {
   return new NDArray(native.linspace(start, stop, num, dtype));
@@ -435,12 +442,7 @@ export function linspace(
 /**
  * Create identity matrix
  */
-export function eye(
-  n: number,
-  m?: number,
-  k: number = 0,
-  dtype: DTypeName = 'float64'
-): NDArray {
+export function eye(n: number, m?: number, k = 0, dtype: DTypeName = 'float64'): NDArray {
   return new NDArray(native.eye(n, m ?? n, k, dtype));
 }
 

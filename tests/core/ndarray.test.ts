@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { NDArray, array, zeros, ones, arange, linspace, eye } from '../../src/index.js';
+import { array, zeros, ones, arange, linspace, eye } from '../../src/index.js';
 
 describe('NDArray', () => {
   describe('creation', () => {
     it('should create array from nested JavaScript arrays', () => {
-      const arr = array([[1, 2, 3], [4, 5, 6]]);
+      const arr = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
       expect(arr.shape).toEqual([2, 3]);
       expect(arr.size).toBe(6);
       expect(arr.ndim).toBe(2);
@@ -69,7 +72,10 @@ describe('NDArray', () => {
     });
 
     it('should access 2D array elements with at()', () => {
-      const arr = array([[1, 2, 3], [4, 5, 6]]);
+      const arr = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
       expect(arr.at(0, 0)).toBe(1);
       expect(arr.at(0, 2)).toBe(3);
       expect(arr.at(1, 1)).toBe(5);
@@ -91,7 +97,10 @@ describe('NDArray', () => {
     });
 
     it('should transpose array', () => {
-      const arr = array([[1, 2, 3], [4, 5, 6]]);
+      const arr = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
       const transposed = arr.T;
       expect(transposed.shape).toEqual([3, 2]);
     });
@@ -106,9 +115,15 @@ describe('NDArray', () => {
     });
 
     it('should convert to JavaScript array', () => {
-      const arr = array([[1, 2], [3, 4]]);
+      const arr = array([
+        [1, 2],
+        [3, 4],
+      ]);
       const jsArr = arr.toArray();
-      expect(jsArr).toEqual([[1, 2], [3, 4]]);
+      expect(jsArr).toEqual([
+        [1, 2],
+        [3, 4],
+      ]);
     });
 
     it('should convert 1D to flat array', () => {
@@ -123,7 +138,7 @@ describe('NDArray', () => {
       const arr = array([1, 2, 3]);
       const values: number[] = [];
       for (const val of arr) {
-        values.push(val as number);
+        values.push(val);
       }
       expect(values).toEqual([1, 2, 3]);
     });
@@ -137,7 +152,10 @@ describe('NDArray', () => {
     });
 
     it('should set 2D array element with set()', () => {
-      const arr = array([[1, 2, 3], [4, 5, 6]]);
+      const arr = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
       arr.set([1, 1], 99);
       expect(arr.at(1, 1)).toBe(99);
     });
@@ -145,14 +163,20 @@ describe('NDArray', () => {
 
   describe('flatten and ravel', () => {
     it('should flatten 2D array', () => {
-      const arr = array([[1, 2, 3], [4, 5, 6]]);
+      const arr = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
       const flat = arr.flatten();
       expect(flat.shape).toEqual([6]);
       expect(flat.toFlatArray()).toEqual([1, 2, 3, 4, 5, 6]);
     });
 
     it('should ravel 2D array (alias for flatten)', () => {
-      const arr = array([[1, 2], [3, 4]]);
+      const arr = array([
+        [1, 2],
+        [3, 4],
+      ]);
       const flat = arr.ravel();
       expect(flat.shape).toEqual([4]);
       expect(flat.toFlatArray()).toEqual([1, 2, 3, 4]);

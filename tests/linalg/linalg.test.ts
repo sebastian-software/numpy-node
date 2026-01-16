@@ -210,7 +210,10 @@ describe('eigvals', () => {
       [0, 3],
     ]);
     const eigenvalues = eigvals(a);
-    const sorted = eigenvalues.toFlatArray().map(Number).sort((x, y) => x - y);
+    const sorted = eigenvalues
+      .toFlatArray()
+      .map(Number)
+      .sort((x, y) => x - y);
     expect(sorted[0]).toBeCloseTo(2, 5);
     expect(sorted[1]).toBeCloseTo(3, 5);
   });

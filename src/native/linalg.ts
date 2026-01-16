@@ -125,6 +125,6 @@ export function cond(a: NDArray): number {
   const { s } = svd(a);
   const singularValues = s.toFlatArray();
   const maxS = Math.max(...singularValues);
-  const minS = Math.min(...singularValues.filter(v => v > 1e-10));
+  const minS = Math.min(...singularValues.filter((v) => v > 1e-10));
   return minS > 0 ? maxS / minS : Infinity;
 }
