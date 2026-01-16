@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { array, zeros, ones, arange, linspace, eye } from '../../src/index.js';
+import {
+  array,
+  zeros,
+  ones,
+  arange,
+  linspace,
+  eye,
+  identity,
+  full,
+  empty,
+  zerosLike,
+  onesLike,
+  emptyLike,
+  astype,
+} from '../../src/index.js';
 
 describe('NDArray', () => {
   describe('creation', () => {
@@ -60,6 +74,69 @@ describe('NDArray', () => {
     it('should create eye (identity) matrix', () => {
       const arr = eye(3);
       expect(arr.shape).toEqual([3, 3]);
+    });
+
+    it('should create identity matrix', () => {
+      const arr = identity(3);
+      expect(arr.shape).toEqual([3, 3]);
+      expect(arr.at(0, 0)).toBe(1);
+      expect(arr.at(1, 1)).toBe(1);
+      expect(arr.at(0, 1)).toBe(0);
+    });
+
+    it('should create full array', () => {
+      const arr = full([2, 3], 7);
+      expect(arr.shape).toEqual([2, 3]);
+      expect(arr.at(0, 0)).toBe(7);
+      expect(arr.at(1, 2)).toBe(7);
+    });
+
+    it('should create empty array (uninitialized)', () => {
+      const arr = empty([2, 2]);
+      expect(arr.shape).toEqual([2, 2]);
+      expect(arr.dtype).toBe('float64');
+    });
+
+    it('should create zerosLike', () => {
+      const a = array([1, 2, 3], 'float32');
+      const b = zerosLike(a);
+      expect(b.shape).toEqual([3]);
+      expect(b.dtype).toBe('float32');
+      expect(b.toFlatArray()).toEqual([0, 0, 0]);
+    });
+
+    it('should create onesLike', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const b = onesLike(a);
+      expect(b.shape).toEqual([2, 2]);
+      expect(b.toFlatArray()).toEqual([1, 1, 1, 1]);
+    });
+
+    it('should create emptyLike', () => {
+      const a = array([1, 2, 3]);
+      const b = emptyLike(a);
+      expect(b.shape).toEqual([3]);
+      expect(b.dtype).toBe('float64');
+    });
+
+    it('should create array from NDArray (copy)', () => {
+      const a = array([1, 2, 3]);
+      const b = array(a);
+      expect(b.toFlatArray()).toEqual([1, 2, 3]);
+      // Verify it's a copy
+      a.set([0], 99);
+      expect(b.at(0)).toBe(1);
+    });
+
+    it('should create array from TypedArray via reshape', () => {
+      // TypedArrays need to go through array() which flattens and creates shape
+      const a = array([1, 2, 3, 4]);
+      const reshaped = a.reshape([2, 2]);
+      expect(reshaped.shape).toEqual([2, 2]);
+      expect(reshaped.toFlatArray()).toEqual([1, 2, 3, 4]);
     });
   });
 
@@ -205,6 +282,87 @@ describe('NDArray', () => {
       const squeezed = arr.squeeze(0);
       expect(squeezed.shape).toEqual([1, 3]);
     });
+  });
+});
+
+describe('dtype conversions', () => {
+  it('should return copy when astype same dtype', () => {
+    const a = array([1, 2, 3]);
+    const b = astype(a, 'float64');
+    expect(b.dtype).toBe('float64');
+    a.set([0], 99);
+    expect(b.at(0)).toBe(1);
+  });
+
+  it('should create array with different dtype', () => {
+    const a = array([1, 2, 3]);
+    const b = astype(a, 'int32');
+    expect(b.dtype).toBe('int32');
+    expect(b.shape).toEqual([3]);
+  });
+
+  it('should handle int8 dtype', () => {
+    const arr = zeros([3], 'int8');
+    expect(arr.dtype).toBe('int8');
+    const ta = arr.toTypedArray();
+    expect(ta).toBeInstanceOf(Int8Array);
+  });
+
+  it('should handle int16 dtype', () => {
+    const arr = zeros([3], 'int16');
+    expect(arr.dtype).toBe('int16');
+    const ta = arr.toTypedArray();
+    expect(ta).toBeInstanceOf(Int16Array);
+  });
+
+  it('should handle uint8 dtype', () => {
+    const arr = zeros([3], 'uint8');
+    expect(arr.dtype).toBe('uint8');
+    const ta = arr.toTypedArray();
+    expect(ta).toBeInstanceOf(Uint8Array);
+  });
+
+  it('should handle uint16 dtype', () => {
+    const arr = zeros([3], 'uint16');
+    expect(arr.dtype).toBe('uint16');
+    const ta = arr.toTypedArray();
+    expect(ta).toBeInstanceOf(Uint16Array);
+  });
+
+  it('should handle uint32 dtype', () => {
+    const arr = zeros([3], 'uint32');
+    expect(arr.dtype).toBe('uint32');
+    const ta = arr.toTypedArray();
+    expect(ta).toBeInstanceOf(Uint32Array);
+  });
+
+  it('should handle float32 dtype', () => {
+    const arr = zeros([3], 'float32');
+    expect(arr.dtype).toBe('float32');
+    const ta = arr.toTypedArray();
+    expect(ta).toBeInstanceOf(Float32Array);
+  });
+});
+
+describe('toString', () => {
+  it('should return string representation', () => {
+    const arr = array([1, 2, 3]);
+    const str = arr.toString();
+    expect(str).toContain('NDArray');
+    expect(str).toContain('[1,2,3]');
+    expect(str).toContain('float64');
+  });
+});
+
+describe('asContiguous', () => {
+  it('should return contiguous array', () => {
+    const arr = array([
+      [1, 2, 3],
+      [4, 5, 6],
+    ]);
+    const transposed = arr.T;
+    const contiguous = transposed.asContiguous();
+    expect(contiguous.shape).toEqual([3, 2]);
   });
 });
 

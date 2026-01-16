@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as np from '../../src/index.js';
 import { array, mean, std, variance, median, NDArray } from '../../src/index.js';
 
 describe('mean', () => {
@@ -91,6 +92,51 @@ describe('median', () => {
   it('should compute median of even-length array', () => {
     const a = array([1, 2, 3, 4]);
     expect(median(a)).toBe(2.5);
+  });
+});
+
+describe('min', () => {
+  it('should compute min of 1D array', () => {
+    const a = array([3, 1, 4, 1, 5]);
+    expect(np.min(a)).toBe(1);
+  });
+
+  it('should compute min of 2D array', () => {
+    const a = array([
+      [3, 1, 4],
+      [1, 5, 9],
+    ]);
+    expect(np.min(a)).toBe(1);
+  });
+});
+
+describe('max', () => {
+  it('should compute max of 1D array', () => {
+    const a = array([3, 1, 4, 1, 5]);
+    expect(np.max(a)).toBe(5);
+  });
+
+  it('should compute max of 2D array', () => {
+    const a = array([
+      [3, 1, 4],
+      [1, 5, 9],
+    ]);
+    expect(np.max(a)).toBe(9);
+  });
+});
+
+describe('prod', () => {
+  it('should compute product of 1D array', () => {
+    const a = array([1, 2, 3, 4]);
+    expect(np.prod(a)).toBe(24);
+  });
+
+  it('should compute product of 2D array', () => {
+    const a = array([
+      [1, 2],
+      [3, 4],
+    ]);
+    expect(np.prod(a)).toBe(24);
   });
 });
 
