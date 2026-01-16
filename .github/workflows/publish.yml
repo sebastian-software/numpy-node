@@ -1,0 +1,168 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Dry run (skip actual publish)'
+        required: false
+        default: 'true'
+        type: boolean
+
+jobs:
+  build-native:
+    name: Build (${{ matrix.os }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: darwin
+            arch: arm64
+            runner: macos-14
+          - os: darwin
+            arch: x64
+            runner: macos-13
+          - os: linux
+            arch: x64
+            runner: ubuntu-latest
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - os: win32
+            arch: x64
+            runner: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenblas-dev liblapack-dev
+
+      - name: Install OpenBLAS (Windows)
+        if: matrix.os == 'win32'
+        run: |
+          vcpkg install openblas:x64-windows
+          echo "CMAKE_PREFIX_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build native module
+        run: pnpm build:native
+
+      - name: Copy binary to platform package
+        shell: bash
+        run: |
+          mkdir -p packages/${{ matrix.os }}-${{ matrix.arch }}
+          cp build/Release/numpy_node_native.node packages/${{ matrix.os }}-${{ matrix.arch }}/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.os }}-${{ matrix.arch }}
+          path: packages/${{ matrix.os }}-${{ matrix.arch }}/numpy_node_native.node
+
+  publish:
+    name: Publish packages
+    needs: build-native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Copy binaries to platform packages
+        run: |
+          for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
+            cp artifacts/native-$platform/numpy_node_native.node packages/$platform/
+          done
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build TypeScript
+        run: pnpm build
+
+      - name: Set version from release tag
+        if: github.event_name == 'release'
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          # Update all package versions
+          node -e "
+            const fs = require('fs');
+            const packages = ['package.json', 'packages/darwin-arm64/package.json', 'packages/darwin-x64/package.json', 'packages/linux-x64/package.json', 'packages/linux-arm64/package.json', 'packages/win32-x64/package.json'];
+            for (const pkg of packages) {
+              const json = JSON.parse(fs.readFileSync(pkg, 'utf8'));
+              json.version = '$VERSION';
+              if (json.optionalDependencies) {
+                for (const dep of Object.keys(json.optionalDependencies)) {
+                  json.optionalDependencies[dep] = '$VERSION';
+                }
+              }
+              fs.writeFileSync(pkg, JSON.stringify(json, null, 2) + '\n');
+            }
+          "
+
+      - name: Publish platform packages (dry run)
+        if: ${{ github.event.inputs.dry-run == 'true' || github.event_name != 'release' }}
+        run: |
+          for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
+            echo "Would publish packages/$platform"
+            ls -la packages/$platform/
+          done
+
+      - name: Publish platform packages
+        if: ${{ github.event.inputs.dry-run != 'true' && github.event_name == 'release' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
+            cd packages/$platform
+            npm publish --access public
+            cd ../..
+          done
+
+      - name: Publish main package (dry run)
+        if: ${{ github.event.inputs.dry-run == 'true' || github.event_name != 'release' }}
+        run: |
+          echo "Would publish main package"
+          ls -la dist/
+
+      - name: Publish main package
+        if: ${{ github.event.inputs.dry-run != 'true' && github.event_name == 'release' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

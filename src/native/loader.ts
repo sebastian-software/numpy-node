@@ -1,5 +1,8 @@
 /**
  * Native module loader for numpy-node
+ *
+ * Loads the native binary from platform-specific npm packages (production)
+ * or from local build directory (development).
  */
 
 import { createRequire } from 'module';
@@ -10,23 +13,40 @@ const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Get the platform-specific package name
+ */
+function getPlatformPackage(): string {
+  const platform = process.platform;
+  const arch = process.arch;
+  return `@aspect/numpy-node-${platform}-${arch}`;
+}
+
+/**
  * Load the native module
  */
 function loadNativeModule(): NativeModule {
+  const errors: string[] = [];
+
+  // 1. Try platform-specific npm package first (production)
+  const platformPackage = getPlatformPackage();
+  try {
+    return require(platformPackage) as NativeModule;
+  } catch (e) {
+    errors.push(`${platformPackage}: ${(e as Error).message}`);
+  }
+
+  // 2. Try local development builds
   const possiblePaths = [
     // Development build (from src/)
     join(__dirname, '../../build/Release/numpy_node_native.node'),
     // Development build (from dist/)
     join(__dirname, '../../../build/Release/numpy_node_native.node'),
-    // Installed prebuilds (from src/)
-    join(__dirname, '../../prebuilds/numpy_node_native.node'),
-    // Installed prebuilds (from dist/)
-    join(__dirname, '../../../prebuilds/numpy_node_native.node'),
+    // Platform package in monorepo (for local testing)
+    join(__dirname, `../../packages/${process.platform}-${process.arch}/numpy_node_native.node`),
     // Direct path from project root
     join(process.cwd(), 'build/Release/numpy_node_native.node'),
   ];
 
-  const errors: string[] = [];
   for (const modulePath of possiblePaths) {
     try {
       return require(modulePath) as NativeModule;
@@ -37,10 +57,13 @@ function loadNativeModule(): NativeModule {
   }
 
   throw new Error(
-    'Failed to load numpy-node native module. ' +
-      'Make sure to run `pnpm build:native` first.\n' +
-      'Tried paths:\n' +
-      errors.join('\n')
+    `Failed to load numpy-node native module.\n\n` +
+      `Platform: ${process.platform}-${process.arch}\n` +
+      `Expected package: ${platformPackage}\n\n` +
+      `If you're developing locally, run: pnpm build:native\n` +
+      `If you installed from npm, your platform may not be supported.\n\n` +
+      `Tried:\n` +
+      errors.map((e) => `  - ${e}`).join('\n')
   );
 }
 

@@ -1,0 +1,23 @@
+{
+  "name": "@aspect/numpy-node-win32-x64",
+  "version": "0.1.0",
+  "description": "numpy-node native binary for Windows x64",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "numpy_node_native.node",
+  "files": [
+    "numpy_node_native.node"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sebastian-software/numpy-node.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@aspect/numpy-node-linux-x64",
+  "version": "0.1.0",
+  "description": "numpy-node native binary for Linux x64",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "numpy_node_native.node",
+  "files": [
+    "numpy_node_native.node"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sebastian-software/numpy-node.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
