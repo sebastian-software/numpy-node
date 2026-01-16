@@ -79,20 +79,20 @@ describe('Arithmetic Operations', () => {
   });
 
   describe('broadcasting', () => {
-    it.skip('should broadcast scalar (TODO: fix native broadcasting)', () => {
+    it('should broadcast scalar to 2D', () => {
       const a = array([[1, 2], [3, 4]]);
       const result = add(a, 10);
       expect(result.toArray()).toEqual([[11, 12], [13, 14]]);
     });
 
-    it.skip('should broadcast 1D to 2D (TODO: fix native broadcasting)', () => {
+    it('should broadcast 1D to 2D', () => {
       const a = array([[1, 2, 3], [4, 5, 6]]);
       const b = array([10, 20, 30]);
       const result = add(a, b);
       expect(result.toArray()).toEqual([[11, 22, 33], [14, 25, 36]]);
     });
 
-    it.skip('should broadcast column vector (TODO: fix native broadcasting)', () => {
+    it('should broadcast column vector', () => {
       const a = array([[1, 2, 3], [4, 5, 6]]);
       const b = array([[10], [20]]);
       const result = add(a, b);
@@ -106,10 +106,16 @@ describe('Arithmetic Operations', () => {
       expect(sum(a)).toBe(15);
     });
 
-    it.skip('should compute sum along axis (TODO: axis reduction returns wrong type)', () => {
+    it('should compute sum along axis 0', () => {
       const a = array([[1, 2, 3], [4, 5, 6]]);
       const result = sum(a, 0);
       expect((result as NDArray).toFlatArray()).toEqual([5, 7, 9]);
+    });
+
+    it('should compute sum along axis 1', () => {
+      const a = array([[1, 2, 3], [4, 5, 6]]);
+      const result = sum(a, 1);
+      expect((result as NDArray).toFlatArray()).toEqual([6, 15]);
     });
 
     it('should compute product', () => {
