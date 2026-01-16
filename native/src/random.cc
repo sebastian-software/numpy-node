@@ -1,4 +1,5 @@
 #include "random.h"
+#define _USE_MATH_DEFINES // Required for M_PI on Windows/MSVC
 #include <cmath>
 #include <cstring>
 #include <chrono>
