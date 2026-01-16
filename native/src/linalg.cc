@@ -409,41 +409,460 @@ Napi::Value Trace(const Napi::CallbackInfo& info) {
     return Napi::Number::New(env, trace);
 }
 
-// Stubs for functions that require full LAPACK
-Napi::Value Eig(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Error::New(env, "eig not yet implemented").ThrowAsJavaScriptException();
-    return env.Undefined();
+// Helper to transpose array (row-major to column-major)
+static void transpose(const double* src, double* dst, int rows, int cols) {
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            dst[j * rows + i] = src[i * cols + j];
+        }
+    }
+}
+
+// Helper to transpose array (column-major to row-major)
+static void transposeBack(const double* src, double* dst, int rows, int cols) {
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            dst[i * cols + j] = src[i + j * rows];
+        }
+    }
 }
 
 Napi::Value Eigvals(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Error::New(env, "eigvals not yet implemented").ThrowAsJavaScriptException();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    if (a->ndim() != 2 || a->shape()[0] != a->shape()[1]) {
+        Napi::Error::New(env, "Matrix must be square").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int n = static_cast<int>(a->shape()[0]);
+
+#if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
+    // Copy and transpose to column-major order
+    std::vector<double> aCopy(n * n);
+    transpose(static_cast<double*>(a->data()), aCopy.data(), n, n);
+
+    std::vector<double> wr(n), wi(n);
+    std::vector<double> work(1);
+    int lwork = -1;
+    int lapackInfo = 0;
+
+    char jobvl = 'N', jobvr = 'N';
+    double* vl = nullptr;
+    double* vr = nullptr;
+    int ldvl = 1, ldvr = 1;
+
+    // Query workspace size
+    dgeev_(&jobvl, &jobvr, &n, aCopy.data(), &n, wr.data(), wi.data(),
+           vl, &ldvl, vr, &ldvr, work.data(), &lwork, &lapackInfo);
+
+    lwork = static_cast<int>(work[0]);
+    work.resize(lwork);
+
+    // Compute eigenvalues
+    dgeev_(&jobvl, &jobvr, &n, aCopy.data(), &n, wr.data(), wi.data(),
+           vl, &ldvl, vr, &ldvr, work.data(), &lwork, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        Napi::Error::New(env, "Eigenvalue computation failed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create result array (real parts only for now)
+    Napi::Array shape = Napi::Array::New(env, 1);
+    shape.Set(uint32_t(0), Napi::Number::New(env, n));
+
+    Napi::Object result = NativeNDArray::constructor.New({shape, Napi::String::New(env, "float64")});
+    NativeNDArray* eigenvalues = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    std::memcpy(eigenvalues->data(), wr.data(), n * sizeof(double));
+
+    return result;
+#else
+    Napi::Error::New(env, "eigvals requires LAPACK").ThrowAsJavaScriptException();
     return env.Undefined();
+#endif
+}
+
+Napi::Value Eig(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    if (a->ndim() != 2 || a->shape()[0] != a->shape()[1]) {
+        Napi::Error::New(env, "Matrix must be square").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int n = static_cast<int>(a->shape()[0]);
+
+#if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
+    // Copy and transpose to column-major order
+    std::vector<double> aCopy(n * n);
+    transpose(static_cast<double*>(a->data()), aCopy.data(), n, n);
+
+    std::vector<double> wr(n), wi(n);
+    std::vector<double> vr(n * n);
+    std::vector<double> work(1);
+    int lwork = -1;
+    int lapackInfo = 0;
+
+    char jobvl = 'N', jobvr = 'V';
+    double* vl = nullptr;
+    int ldvl = 1, ldvr = n;
+
+    // Query workspace size
+    dgeev_(&jobvl, &jobvr, &n, aCopy.data(), &n, wr.data(), wi.data(),
+           vl, &ldvl, vr.data(), &ldvr, work.data(), &lwork, &lapackInfo);
+
+    lwork = static_cast<int>(work[0]);
+    work.resize(lwork);
+
+    // Compute eigenvalues and eigenvectors
+    dgeev_(&jobvl, &jobvr, &n, aCopy.data(), &n, wr.data(), wi.data(),
+           vl, &ldvl, vr.data(), &ldvr, work.data(), &lwork, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        Napi::Error::New(env, "Eigenvalue computation failed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create eigenvalues array
+    Napi::Array evalShape = Napi::Array::New(env, 1);
+    evalShape.Set(uint32_t(0), Napi::Number::New(env, n));
+    Napi::Object eigenvalues = NativeNDArray::constructor.New({evalShape, Napi::String::New(env, "float64")});
+    NativeNDArray* evalArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(eigenvalues);
+    std::memcpy(evalArr->data(), wr.data(), n * sizeof(double));
+
+    // Create eigenvectors array (transpose back to row-major)
+    Napi::Array evecShape = Napi::Array::New(env, 2);
+    evecShape.Set(uint32_t(0), Napi::Number::New(env, n));
+    evecShape.Set(uint32_t(1), Napi::Number::New(env, n));
+    Napi::Object eigenvectors = NativeNDArray::constructor.New({evecShape, Napi::String::New(env, "float64")});
+    NativeNDArray* evecArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(eigenvectors);
+    transposeBack(vr.data(), static_cast<double*>(evecArr->data()), n, n);
+
+    // Return object with eigenvalues and eigenvectors
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("eigenvalues", eigenvalues);
+    result.Set("eigenvectors", eigenvectors);
+    return result;
+#else
+    Napi::Error::New(env, "eig requires LAPACK").ThrowAsJavaScriptException();
+    return env.Undefined();
+#endif
 }
 
 Napi::Value Svd(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Error::New(env, "svd not yet implemented").ThrowAsJavaScriptException();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    if (a->ndim() != 2) {
+        Napi::Error::New(env, "svd requires 2D array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int m = static_cast<int>(a->shape()[0]);
+    int n = static_cast<int>(a->shape()[1]);
+    int minmn = std::min(m, n);
+
+#if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
+    // Copy and transpose to column-major order
+    std::vector<double> aCopy(m * n);
+    transpose(static_cast<double*>(a->data()), aCopy.data(), m, n);
+
+    std::vector<double> s(minmn);
+    std::vector<double> u(m * m);
+    std::vector<double> vt(n * n);
+    std::vector<double> work(1);
+    int lwork = -1;
+    int lapackInfo = 0;
+
+    char jobu = 'A', jobvt = 'A';
+
+    // Query workspace size
+    dgesvd_(&jobu, &jobvt, &m, &n, aCopy.data(), &m,
+            s.data(), u.data(), &m, vt.data(), &n,
+            work.data(), &lwork, &lapackInfo);
+
+    lwork = static_cast<int>(work[0]);
+    work.resize(lwork);
+
+    // Compute SVD
+    dgesvd_(&jobu, &jobvt, &m, &n, aCopy.data(), &m,
+            s.data(), u.data(), &m, vt.data(), &n,
+            work.data(), &lwork, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        Napi::Error::New(env, "SVD computation failed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create U array (transpose back to row-major)
+    Napi::Array uShape = Napi::Array::New(env, 2);
+    uShape.Set(uint32_t(0), Napi::Number::New(env, m));
+    uShape.Set(uint32_t(1), Napi::Number::New(env, m));
+    Napi::Object uResult = NativeNDArray::constructor.New({uShape, Napi::String::New(env, "float64")});
+    NativeNDArray* uArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(uResult);
+    transposeBack(u.data(), static_cast<double*>(uArr->data()), m, m);
+
+    // Create S array
+    Napi::Array sShape = Napi::Array::New(env, 1);
+    sShape.Set(uint32_t(0), Napi::Number::New(env, minmn));
+    Napi::Object sResult = NativeNDArray::constructor.New({sShape, Napi::String::New(env, "float64")});
+    NativeNDArray* sArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(sResult);
+    std::memcpy(sArr->data(), s.data(), minmn * sizeof(double));
+
+    // Create Vh array (transpose back to row-major)
+    Napi::Array vhShape = Napi::Array::New(env, 2);
+    vhShape.Set(uint32_t(0), Napi::Number::New(env, n));
+    vhShape.Set(uint32_t(1), Napi::Number::New(env, n));
+    Napi::Object vhResult = NativeNDArray::constructor.New({vhShape, Napi::String::New(env, "float64")});
+    NativeNDArray* vhArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(vhResult);
+    transposeBack(vt.data(), static_cast<double*>(vhArr->data()), n, n);
+
+    // Return object with u, s, vh
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("u", uResult);
+    result.Set("s", sResult);
+    result.Set("vh", vhResult);
+    return result;
+#else
+    Napi::Error::New(env, "svd requires LAPACK").ThrowAsJavaScriptException();
     return env.Undefined();
+#endif
 }
 
 Napi::Value Qr(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Error::New(env, "qr not yet implemented").ThrowAsJavaScriptException();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    if (a->ndim() != 2) {
+        Napi::Error::New(env, "qr requires 2D array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int m = static_cast<int>(a->shape()[0]);
+    int n = static_cast<int>(a->shape()[1]);
+    int k = std::min(m, n);
+
+#if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
+    // Copy and transpose to column-major order
+    std::vector<double> aCopy(m * n);
+    transpose(static_cast<double*>(a->data()), aCopy.data(), m, n);
+
+    std::vector<double> tau(k);
+    std::vector<double> work(1);
+    int lwork = -1;
+    int lapackInfo = 0;
+
+    // Query workspace size for QR
+    dgeqrf_(&m, &n, aCopy.data(), &m, tau.data(), work.data(), &lwork, &lapackInfo);
+    lwork = static_cast<int>(work[0]);
+    work.resize(lwork);
+
+    // Compute QR factorization
+    dgeqrf_(&m, &n, aCopy.data(), &m, tau.data(), work.data(), &lwork, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        Napi::Error::New(env, "QR factorization failed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Extract R (upper triangular part) - still in column-major
+    std::vector<double> rColMajor(m * n, 0.0);
+    for (int i = 0; i < m; i++) {
+        for (int j = i; j < n; j++) {
+            rColMajor[i + j * m] = aCopy[i + j * m];
+        }
+    }
+
+    // Generate Q from Householder reflectors
+    lwork = -1;
+    dorgqr_(&m, &k, &k, aCopy.data(), &m, tau.data(), work.data(), &lwork, &lapackInfo);
+    lwork = static_cast<int>(work[0]);
+    work.resize(lwork);
+
+    dorgqr_(&m, &k, &k, aCopy.data(), &m, tau.data(), work.data(), &lwork, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        Napi::Error::New(env, "Q generation failed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create Q array (transpose back to row-major)
+    Napi::Array qShape = Napi::Array::New(env, 2);
+    qShape.Set(uint32_t(0), Napi::Number::New(env, m));
+    qShape.Set(uint32_t(1), Napi::Number::New(env, k));
+    Napi::Object qResult = NativeNDArray::constructor.New({qShape, Napi::String::New(env, "float64")});
+    NativeNDArray* qArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(qResult);
+    transposeBack(aCopy.data(), static_cast<double*>(qArr->data()), m, k);
+
+    // Create R array (transpose back to row-major)
+    Napi::Array rShape = Napi::Array::New(env, 2);
+    rShape.Set(uint32_t(0), Napi::Number::New(env, k));
+    rShape.Set(uint32_t(1), Napi::Number::New(env, n));
+    Napi::Object rResult = NativeNDArray::constructor.New({rShape, Napi::String::New(env, "float64")});
+    NativeNDArray* rArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(rResult);
+    // Only copy the top k rows of R
+    for (int i = 0; i < k; i++) {
+        for (int j = 0; j < n; j++) {
+            static_cast<double*>(rArr->data())[i * n + j] = rColMajor[i + j * m];
+        }
+    }
+
+    // Return object with q and r
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("q", qResult);
+    result.Set("r", rResult);
+    return result;
+#else
+    Napi::Error::New(env, "qr requires LAPACK").ThrowAsJavaScriptException();
     return env.Undefined();
+#endif
 }
 
 Napi::Value Cholesky(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Error::New(env, "cholesky not yet implemented").ThrowAsJavaScriptException();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    if (a->ndim() != 2 || a->shape()[0] != a->shape()[1]) {
+        Napi::Error::New(env, "Matrix must be square").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int n = static_cast<int>(a->shape()[0]);
+
+#if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
+    // Copy and transpose to column-major order
+    std::vector<double> aCopy(n * n);
+    transpose(static_cast<double*>(a->data()), aCopy.data(), n, n);
+
+    int lapackInfo = 0;
+    char uplo = 'L';  // Lower triangular
+
+    dpotrf_(&uplo, &n, aCopy.data(), &n, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        Napi::Error::New(env, "Cholesky decomposition failed (matrix not positive definite)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Zero out upper triangle in column-major
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            aCopy[i + j * n] = 0.0;
+        }
+    }
+
+    // Create result array (transpose back to row-major)
+    Napi::Array shape = Napi::Array::New(env, 2);
+    shape.Set(uint32_t(0), Napi::Number::New(env, n));
+    shape.Set(uint32_t(1), Napi::Number::New(env, n));
+    Napi::Object result = NativeNDArray::constructor.New({shape, Napi::String::New(env, "float64")});
+    NativeNDArray* L = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    transposeBack(aCopy.data(), static_cast<double*>(L->data()), n, n);
+
+    return result;
+#else
+    Napi::Error::New(env, "cholesky requires LAPACK").ThrowAsJavaScriptException();
     return env.Undefined();
+#endif
 }
 
 Napi::Value MatrixRank(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    Napi::Error::New(env, "matrix_rank not yet implemented").ThrowAsJavaScriptException();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    if (a->ndim() != 2) {
+        Napi::Error::New(env, "matrix_rank requires 2D array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int m = static_cast<int>(a->shape()[0]);
+    int n = static_cast<int>(a->shape()[1]);
+    int minmn = std::min(m, n);
+
+#if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
+    // Use SVD to compute rank
+    std::vector<double> aCopy(m * n);
+    transpose(static_cast<double*>(a->data()), aCopy.data(), m, n);
+
+    std::vector<double> s(minmn);
+    std::vector<double> work(1);
+    int lwork = -1;
+    int lapackInfo = 0;
+
+    char jobu = 'N', jobvt = 'N';
+    double* u = nullptr;
+    double* vt = nullptr;
+    int ldu = 1, ldvt = 1;
+
+    // Query workspace size
+    dgesvd_(&jobu, &jobvt, &m, &n, aCopy.data(), &m,
+            s.data(), u, &ldu, vt, &ldvt,
+            work.data(), &lwork, &lapackInfo);
+
+    lwork = static_cast<int>(work[0]);
+    work.resize(lwork);
+
+    // Compute SVD (singular values only)
+    dgesvd_(&jobu, &jobvt, &m, &n, aCopy.data(), &m,
+            s.data(), u, &ldu, vt, &ldvt,
+            work.data(), &lwork, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        Napi::Error::New(env, "SVD for rank computation failed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Count non-zero singular values
+    double tol = std::max(m, n) * s[0] * 1e-14;
+    int rank = 0;
+    for (int i = 0; i < minmn; i++) {
+        if (s[i] > tol) rank++;
+    }
+
+    return Napi::Number::New(env, rank);
+#else
+    Napi::Error::New(env, "matrix_rank requires LAPACK").ThrowAsJavaScriptException();
     return env.Undefined();
+#endif
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {

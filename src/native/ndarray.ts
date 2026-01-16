@@ -137,6 +137,30 @@ export class NDArray {
   }
 
   /**
+   * Get element size in bytes for this dtype
+   */
+  private get elementSize(): number {
+    switch (this.dtype) {
+      case 'int8':
+      case 'uint8':
+      case 'bool':
+        return 1;
+      case 'int16':
+      case 'uint16':
+        return 2;
+      case 'int32':
+      case 'uint32':
+      case 'float32':
+        return 4;
+      case 'int64':
+      case 'uint64':
+      case 'float64':
+      default:
+        return 8;
+    }
+  }
+
+  /**
    * Get element at indices
    */
   at(...indices: number[]): number {
@@ -146,9 +170,11 @@ export class NDArray {
       return Number(view[indices[0]!]);
     }
     // Calculate flat index from indices
+    // Note: C++ strides are in bytes, so divide by element size
+    const elemSize = this.elementSize;
     let flatIndex = 0;
     for (let i = 0; i < indices.length; i++) {
-      flatIndex += indices[i]! * this.strides[i]!;
+      flatIndex += indices[i]! * (this.strides[i]! / elemSize);
     }
     return Number(view[flatIndex]);
   }
@@ -167,18 +193,22 @@ export class NDArray {
       return result;
     }
 
+    // Convert byte strides to element strides
+    const elemSize = this.elementSize;
+    const elemStrides = this.strides.map(s => s / elemSize);
+
     const buildArray = (dim: number, offset: number): unknown => {
       if (dim === this.ndim - 1) {
         const result: number[] = [];
         for (let i = 0; i < this.shape[dim]!; i++) {
-          result.push(Number(data[offset + i * this.strides[dim]!]));
+          result.push(Number(data[offset + i * elemStrides[dim]!]));
         }
         return result;
       }
 
       const result: unknown[] = [];
       for (let i = 0; i < this.shape[dim]!; i++) {
-        result.push(buildArray(dim + 1, offset + i * this.strides[dim]!));
+        result.push(buildArray(dim + 1, offset + i * elemStrides[dim]!));
       }
       return result;
     };

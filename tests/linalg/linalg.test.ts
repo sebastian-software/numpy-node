@@ -1,9 +1,8 @@
 /**
  * Tests for linear algebra functions
  *
- * Note: Some functions are not yet implemented in the native module.
- * Tests for unimplemented functions are skipped.
- * 2D array operations have known issues in the native module and are also skipped.
+ * Note: Some norm variants (L1, infinity) and matrix-vector dot products
+ * are not yet fully implemented. Tests for those are skipped.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -18,6 +17,7 @@ import {
   eigvals,
   eig,
   qr,
+  svd,
   norm,
   matrix_rank,
   cond,
@@ -31,7 +31,7 @@ describe('dot', () => {
     expect(dot(a, b)).toBe(32); // 1*4 + 2*5 + 3*6 = 32
   });
 
-  it.skip('should compute matrix multiplication of 2D arrays (TODO: fix native 2D)', () => {
+  it('should compute matrix multiplication of 2D arrays', () => {
     const a = array([
       [1, 2],
       [3, 4],
@@ -78,7 +78,7 @@ describe('dot', () => {
 });
 
 describe('matmul', () => {
-  it.skip('should compute matrix multiplication (TODO: fix native 2D)', () => {
+  it('should compute matrix multiplication', () => {
     const a = array([
       [1, 2],
       [3, 4],
@@ -94,7 +94,7 @@ describe('matmul', () => {
     ]);
   });
 
-  it.skip('should handle non-square matrices (TODO: fix native 2D)', () => {
+  it('should handle non-square matrices', () => {
     const a = array([
       [1, 2, 3],
       [4, 5, 6],
@@ -106,6 +106,10 @@ describe('matmul', () => {
     ]);
     const result = matmul(a, b);
     expect(result.shape).toEqual([2, 2]);
+    expect(result.toArray()).toEqual([
+      [22, 28],
+      [49, 64],
+    ]);
   });
 
   it('should throw for non-2D arrays', () => {
@@ -116,14 +120,18 @@ describe('matmul', () => {
 });
 
 describe('inv', () => {
-  it.skip('should compute inverse of 2x2 matrix (TODO: fix native 2D)', () => {
+  it('should compute inverse of 2x2 matrix', () => {
     const a = array([
       [4, 7],
       [2, 6],
     ]);
     const result = inv(a);
+    // Verify A * A^-1 = I
     const identity = matmul(a, result);
     expect(identity.at(0, 0)).toBeCloseTo(1, 10);
+    expect(identity.at(0, 1)).toBeCloseTo(0, 10);
+    expect(identity.at(1, 0)).toBeCloseTo(0, 10);
+    expect(identity.at(1, 1)).toBeCloseTo(1, 10);
   });
 
   it('should throw for singular matrix', () => {
@@ -172,16 +180,17 @@ describe('trace', () => {
 });
 
 describe('solve', () => {
-  it.skip('should solve linear system (TODO: fix native 2D)', () => {
+  it('should solve linear system', () => {
     const a = array([
       [3, 1],
       [1, 2],
     ]);
     const b = array([9, 8]);
     const x = solve(a, b);
-    const result = dot(a, x) as NDArray;
-    expect(result.at(0)).toBeCloseTo(9, 10);
-    expect(result.at(1)).toBeCloseTo(8, 10);
+    // Check solution values directly
+    // 3x + y = 9, x + 2y = 8 => x = 2, y = 3
+    expect(x.at(0)).toBeCloseTo(2, 5);
+    expect(x.at(1)).toBeCloseTo(3, 5);
   });
 
   it('should throw for singular matrix', () => {
@@ -194,7 +203,7 @@ describe('solve', () => {
   });
 });
 
-describe.skip('eigvals (not yet implemented in native)', () => {
+describe('eigvals', () => {
   it('should compute eigenvalues of diagonal matrix', () => {
     const a = array([
       [2, 0],
@@ -207,27 +216,33 @@ describe.skip('eigvals (not yet implemented in native)', () => {
   });
 });
 
-describe.skip('eig (not yet implemented in native)', () => {
+describe('eig', () => {
   it('should compute eigenvalues and eigenvectors', () => {
     const a = array([
       [2, 0],
       [0, 3],
     ]);
     const { eigenvalues, eigenvectors } = eig(a);
+    expect(eigenvalues.shape).toEqual([2]);
     expect(eigenvectors.shape).toEqual([2, 2]);
   });
 });
 
-describe.skip('qr (not yet implemented in native)', () => {
+describe('qr', () => {
   it('should compute QR decomposition', () => {
     const a = array([
-      [12, -51, 4],
-      [6, 167, -68],
-      [-4, 24, -41],
+      [1, 2],
+      [3, 4],
     ]);
     const { q, r } = qr(a);
-    expect(q.shape).toEqual([3, 3]);
-    expect(r.shape).toEqual([3, 3]);
+    expect(q.shape).toEqual([2, 2]);
+    expect(r.shape).toEqual([2, 2]);
+    // Q * R should equal A
+    const reconstructed = matmul(q, r);
+    expect(reconstructed.at(0, 0)).toBeCloseTo(1, 5);
+    expect(reconstructed.at(0, 1)).toBeCloseTo(2, 5);
+    expect(reconstructed.at(1, 0)).toBeCloseTo(3, 5);
+    expect(reconstructed.at(1, 1)).toBeCloseTo(4, 5);
   });
 });
 
@@ -257,7 +272,7 @@ describe('norm', () => {
   });
 });
 
-describe.skip('matrix_rank (not yet implemented in native)', () => {
+describe('matrix_rank', () => {
   it('should compute rank of full rank matrix', () => {
     const a = array([
       [1, 2],
@@ -265,9 +280,35 @@ describe.skip('matrix_rank (not yet implemented in native)', () => {
     ]);
     expect(matrix_rank(a)).toBe(2);
   });
+
+  it('should compute rank of rank-deficient matrix', () => {
+    const a = array([
+      [1, 2],
+      [2, 4],
+    ]);
+    expect(matrix_rank(a)).toBe(1);
+  });
 });
 
-describe.skip('cond (depends on svd which is not yet implemented)', () => {
+describe('svd', () => {
+  it('should compute SVD of a matrix', () => {
+    const a = array([
+      [1, 2],
+      [3, 4],
+    ]);
+    const { u, s, vh } = svd(a);
+    expect(u.shape).toEqual([2, 2]);
+    expect(s.shape).toEqual([2]);
+    expect(vh.shape).toEqual([2, 2]);
+    // U and Vh should be orthogonal
+    const ut = u.T;
+    const utu = matmul(ut, u);
+    expect(utu.at(0, 0)).toBeCloseTo(1, 5);
+    expect(utu.at(1, 1)).toBeCloseTo(1, 5);
+  });
+});
+
+describe('cond', () => {
   it('should compute condition number of identity matrix', () => {
     const a = array([
       [1, 0],

@@ -68,7 +68,7 @@ describe('NDArray', () => {
       expect(arr.at(4)).toBe(5);
     });
 
-    it.skip('should access 2D array elements with at() (TODO: fix native 2D indexing)', () => {
+    it('should access 2D array elements with at()', () => {
       const arr = array([[1, 2, 3], [4, 5, 6]]);
       expect(arr.at(0, 0)).toBe(1);
       expect(arr.at(0, 2)).toBe(3);
@@ -83,14 +83,14 @@ describe('NDArray', () => {
       expect(reshaped.shape).toEqual([12]);
     });
 
-    it.skip('should reshape and access 2D (TODO: fix native 2D)', () => {
+    it('should reshape and access 2D', () => {
       const arr = arange(12);
       const reshaped = arr.reshape([3, 4]);
       expect(reshaped.shape).toEqual([3, 4]);
       expect(reshaped.at(2, 3)).toBe(11);
     });
 
-    it.skip('should transpose array (TODO: fix native 2D)', () => {
+    it('should transpose array', () => {
       const arr = array([[1, 2, 3], [4, 5, 6]]);
       const transposed = arr.T;
       expect(transposed.shape).toEqual([3, 2]);
@@ -105,7 +105,7 @@ describe('NDArray', () => {
       expect(copy.toFlatArray()).toEqual([1, 2, 3]);
     });
 
-    it.skip('should convert to JavaScript array (TODO: fix native 2D)', () => {
+    it('should convert to JavaScript array', () => {
       const arr = array([[1, 2], [3, 4]]);
       const jsArr = arr.toArray();
       expect(jsArr).toEqual([[1, 2], [3, 4]]);
