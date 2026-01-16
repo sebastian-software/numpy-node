@@ -53,7 +53,7 @@
     }
 #endif
 
-namespace np_ts {
+namespace numpy_node {
 namespace linalg {
 
 Napi::Value Matmul(const Napi::CallbackInfo& info) {
@@ -468,4 +468,4 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 }
 
 } // namespace linalg
-} // namespace np_ts
+} // namespace numpy_node

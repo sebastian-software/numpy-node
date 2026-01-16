@@ -1,5 +1,5 @@
 /**
- * Mathematical functions for np-ts
+ * Mathematical functions for numpy-node
  * Provides element-wise mathematical operations
  */
 

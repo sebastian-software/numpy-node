@@ -1,5 +1,5 @@
 /**
- * Statistical functions for np-ts
+ * Statistical functions for numpy-node
  * Provides statistical operations on arrays
  */
 

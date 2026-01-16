@@ -1,5 +1,5 @@
 /**
- * np-ts - A high-performance TypeScript implementation of NumPy
+ * numpy-node - A high-performance TypeScript implementation of NumPy
  *
  * @packageDocumentation
  */
@@ -253,7 +253,7 @@ import * as linalg from './linalg/index.js';
 
 /**
  * NumPy-like namespace object
- * Use: import np from 'np-ts'
+ * Use: import np from 'numpy-node'
  */
 const np = {
   // Core

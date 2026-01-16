@@ -1,5 +1,5 @@
 /**
- * Operations module exports for np-ts
+ * Operations module exports for numpy-node
  */
 
 export {

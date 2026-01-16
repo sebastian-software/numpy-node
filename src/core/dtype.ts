@@ -1,5 +1,5 @@
 /**
- * Data type system for np-ts
+ * Data type system for numpy-node
  * Provides NumPy-compatible data types with TypedArray backing
  */
 

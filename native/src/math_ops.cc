@@ -8,7 +8,7 @@
     #include <Accelerate/Accelerate.h>
 #endif
 
-namespace np_ts {
+namespace numpy_node {
 namespace math {
 
 // Helper template for element-wise binary operations
@@ -452,4 +452,4 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 }
 
 } // namespace math
-} // namespace np_ts
+} // namespace numpy_node

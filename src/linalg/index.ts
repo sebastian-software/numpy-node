@@ -1,5 +1,5 @@
 /**
- * Linear algebra functions for np-ts
+ * Linear algebra functions for numpy-node
  * Provides common linear algebra operations
  */
 

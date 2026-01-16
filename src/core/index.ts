@@ -1,5 +1,5 @@
 /**
- * Core module exports for np-ts
+ * Core module exports for numpy-node
  */
 
 export {

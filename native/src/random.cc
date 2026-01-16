@@ -3,7 +3,7 @@
 #include <cstring>
 #include <chrono>
 
-namespace np_ts {
+namespace numpy_node {
 namespace random {
 
 // PCG64 implementation
@@ -513,4 +513,4 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 }
 
 } // namespace random
-} // namespace np_ts
+} // namespace numpy_node

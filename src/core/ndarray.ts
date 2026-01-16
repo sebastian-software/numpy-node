@@ -1,5 +1,5 @@
 /**
- * NDArray - Core n-dimensional array class for np-ts
+ * NDArray - Core n-dimensional array class for numpy-node
  * Provides NumPy-compatible array operations with TypedArray backing
  */
 

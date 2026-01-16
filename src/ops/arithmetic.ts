@@ -1,5 +1,5 @@
 /**
- * Arithmetic operations for np-ts
+ * Arithmetic operations for numpy-node
  * Provides element-wise arithmetic with broadcasting support
  */
 

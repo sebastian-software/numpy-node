@@ -1,5 +1,5 @@
 /**
- * Strides utilities for np-ts
+ * Strides utilities for numpy-node
  * Handles stride calculation for array memory layout
  */
 

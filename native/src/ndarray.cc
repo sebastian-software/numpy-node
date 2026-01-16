@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <numeric>
 
-namespace np_ts {
+namespace numpy_node {
 
 Napi::FunctionReference NativeNDArray::constructor;
 
@@ -612,4 +612,4 @@ Napi::Value CreateEye(const Napi::CallbackInfo& info) {
     return arr;
 }
 
-} // namespace np_ts
+} // namespace numpy_node
