@@ -26,10 +26,9 @@ jobs:
         include:
           - os: darwin
             arch: arm64
-            runner: macos-14
-          - os: darwin
-            arch: x64
-            runner: macos-13-xlarge # Intel Mac requires xlarge runner
+            runner: macos-15
+          # darwin-x64 removed: GitHub retired all Intel Mac runners
+          # Intel Mac users can build from source
           - os: linux
             arch: x64
             runner: ubuntu-latest
@@ -110,7 +109,7 @@ jobs:
 
       - name: Copy binaries to platform packages
         run: |
-          for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
+          for platform in darwin-arm64 linux-x64 linux-arm64 win32-x64; do
             cp artifacts/native-$platform/numpy_node_native.node packages/$platform/
           done
 
@@ -149,7 +148,7 @@ jobs:
         if: ${{ inputs.dry-run == true }}
         run: |
           echo "Dry run - would publish version $VERSION"
-          for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
+          for platform in darwin-arm64 linux-x64 linux-arm64 win32-x64; do
             echo "Would publish packages/$platform"
             ls -la packages/$platform/
           done
@@ -157,7 +156,7 @@ jobs:
       - name: Publish platform packages
         if: ${{ inputs.dry-run != true }}
         run: |
-          for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
+          for platform in darwin-arm64 linux-x64 linux-arm64 win32-x64; do
             cd packages/$platform
             npm publish --access public --provenance
             cd ../..
