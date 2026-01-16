@@ -45,8 +45,20 @@ export function average<D extends DTypeName>(
 
   // Weighted average
   const weighted = multiply(a, weights);
-  const weightSum = sum(weights, axis) as number | NDArray;
-  const avg = divide(sum(weighted, axis) as NDArray, weightSum);
+  const weightedSum = sum(weighted, axis);
+  const weightSum = sum(weights, axis);
+
+  // Handle scalar case (no axis specified)
+  if (typeof weightedSum === 'number' && typeof weightSum === 'number') {
+    const avg = weightedSum / weightSum;
+    if (returned) {
+      return [avg, weightSum];
+    }
+    return avg;
+  }
+
+  // Handle array case (axis specified)
+  const avg = divide(weightedSum as NDArray, weightSum as NDArray | number);
 
   if (returned) {
     return [avg, weightSum] as [number | NDArray<'float64'>, number | NDArray<'float64'>];
@@ -87,23 +99,25 @@ export function variance<D extends DTypeName>(
 
   const result = NDArray.zeros<'float64'>(outShape, { dtype: 'float64' });
   const meanArr = meanVal as NDArray<'float64'>;
+  // Extract mean values as flat array for reliable indexing
+  const meanValues = meanArr.toFlatArray().map(Number);
 
   let outIdx = 0;
   for (const outIndices of new IndexIterator(outShape)) {
-    // Build indices template
+    // Build indices template for input array
     const inIndices: number[] = [];
     let j = 0;
     for (let i = 0; i < a.ndim; i++) {
       if (i === normalizedAxis) {
         inIndices.push(0);
       } else {
-        const idx = keepdims ? (i < normalizedAxis ? outIndices[i] : outIndices[i]) : outIndices[j]!;
+        const idx = keepdims ? outIndices[i] : outIndices[j];
         inIndices.push(idx ?? 0);
         if (!keepdims) j++;
       }
     }
 
-    const meanValue = Number(meanArr.getFlat(outIdx));
+    const meanValue = meanValues[outIdx]!;
     let sumSq = 0;
 
     for (let k = 0; k < axisSize; k++) {
