@@ -10,7 +10,8 @@
   ],
   "main": "numpy_node_native.node",
   "files": [
-    "numpy_node_native.node"
+    "numpy_node_native.node",
+    "README.md"
   ],
   "license": "MIT",
   "repository": {

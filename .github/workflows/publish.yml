@@ -10,6 +10,10 @@ on:
         default: 'true'
         type: boolean
 
+permissions:
+  contents: read
+  id-token: write # Required for npm provenance / trusted publishing
+
 jobs:
   build-native:
     name: Build (${{ matrix.os }}, ${{ matrix.arch }})
@@ -150,12 +154,10 @@ jobs:
 
       - name: Publish platform packages
         if: ${{ inputs.dry-run != true }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
             cd packages/$platform
-            npm publish --access public
+            npm publish --access public --provenance
             cd ../..
           done
 
@@ -167,6 +169,4 @@ jobs:
 
       - name: Publish main package
         if: ${{ inputs.dry-run != true }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        run: npm publish --access public --provenance
