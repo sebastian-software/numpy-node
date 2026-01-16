@@ -272,6 +272,7 @@ export function reduceAxis<D extends DTypeName>(
     for (let i = 0; i < arr.ndim; i++) {
       if (i === normalizedAxis) {
         inIndices.push(0); // Will be replaced
+        if (keepdims) j++; // Skip the reduced dimension in outIndices when keepdims
       } else {
         inIndices.push(outIndices[j]!);
         j++;
