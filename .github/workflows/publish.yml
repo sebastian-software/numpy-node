@@ -1,8 +1,7 @@
 name: Publish
 
 on:
-  release:
-    types: [published]
+  workflow_call: # Called by release-please
   workflow_dispatch:
     inputs:
       dry-run:
@@ -115,37 +114,42 @@ jobs:
       - name: Build TypeScript
         run: pnpm build
 
-      - name: Set version from release tag
-        if: github.event_name == 'release'
+      - name: Sync version to platform packages
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          # Update all package versions
+          # Update platform package versions
           node -e "
             const fs = require('fs');
-            const packages = ['package.json', 'packages/darwin-arm64/package.json', 'packages/darwin-x64/package.json', 'packages/linux-x64/package.json', 'packages/linux-arm64/package.json', 'packages/win32-x64/package.json'];
-            for (const pkg of packages) {
-              const json = JSON.parse(fs.readFileSync(pkg, 'utf8'));
-              json.version = '$VERSION';
-              if (json.optionalDependencies) {
-                for (const dep of Object.keys(json.optionalDependencies)) {
-                  json.optionalDependencies[dep] = '$VERSION';
-                }
+            const version = '$VERSION';
+            const platforms = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'win32-x64'];
+            for (const platform of platforms) {
+              const pkgPath = 'packages/' + platform + '/package.json';
+              const json = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+              json.version = version;
+              fs.writeFileSync(pkgPath, JSON.stringify(json, null, 2) + '\n');
+            }
+            // Also update optionalDependencies in main package
+            const mainPkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            if (mainPkg.optionalDependencies) {
+              for (const dep of Object.keys(mainPkg.optionalDependencies)) {
+                mainPkg.optionalDependencies[dep] = version;
               }
-              fs.writeFileSync(pkg, JSON.stringify(json, null, 2) + '\n');
+              fs.writeFileSync('package.json', JSON.stringify(mainPkg, null, 2) + '\n');
             }
           "
 
       - name: Publish platform packages (dry run)
-        if: ${{ github.event.inputs.dry-run == 'true' || github.event_name != 'release' }}
+        if: ${{ inputs.dry-run == true }}
         run: |
+          echo "Dry run - would publish version $VERSION"
           for platform in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64; do
             echo "Would publish packages/$platform"
             ls -la packages/$platform/
           done
 
       - name: Publish platform packages
-        if: ${{ github.event.inputs.dry-run != 'true' && github.event_name == 'release' }}
+        if: ${{ inputs.dry-run != true }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -156,13 +160,13 @@ jobs:
           done
 
       - name: Publish main package (dry run)
-        if: ${{ github.event.inputs.dry-run == 'true' || github.event_name != 'release' }}
+        if: ${{ inputs.dry-run == true }}
         run: |
-          echo "Would publish main package"
+          echo "Would publish main package version $VERSION"
           ls -la dist/
 
       - name: Publish main package
-        if: ${{ github.event.inputs.dry-run != 'true' && github.event_name == 'release' }}
+        if: ${{ inputs.dry-run != true }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public
