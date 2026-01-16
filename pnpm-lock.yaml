@@ -6,6 +6,22 @@ settings:
 
 importers:
   .:
+    optionalDependencies:
+      '@numpy-node/darwin-arm64':
+        specifier: 0.1.0
+        version: 0.1.0
+      '@numpy-node/darwin-x64':
+        specifier: 0.1.0
+        version: 0.1.0
+      '@numpy-node/linux-arm64':
+        specifier: 0.1.0
+        version: 0.1.0
+      '@numpy-node/linux-x64':
+        specifier: 0.1.0
+        version: 0.1.0
+      '@numpy-node/win32-x64':
+        specifier: 0.1.0
+        version: 0.1.0
     devDependencies:
       '@eslint/js':
         specifier: ^9.18.0
@@ -665,6 +681,46 @@ packages:
       {
         integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==,
       }
+
+  '@numpy-node/darwin-arm64@0.1.0':
+    resolution:
+      {
+        integrity: sha512-EQhwJ6HAnlx5JMCYpDiOthWAPBCGXJei7Yvyg/+QYm04G4MkAYXhliwjmS0IS5Yuzh5gqci51P6xhO7aiWbIIQ==,
+      }
+    cpu: [arm64]
+    os: [darwin]
+
+  '@numpy-node/darwin-x64@0.1.0':
+    resolution:
+      {
+        integrity: sha512-sm5J6UdkiTdrAU8VjMz21rXBhr69NXzNIa7zqQnDNiA+1S2x5jxGGKNdP1/xFIaY+v8OeaFIymS165bGGqh/Rw==,
+      }
+    cpu: [x64]
+    os: [darwin]
+
+  '@numpy-node/linux-arm64@0.1.0':
+    resolution:
+      {
+        integrity: sha512-WfRafSR8CaSMyTCunLskp5kNTvrSIUcyjGLfuTz0NM6XrsqUaub1//nZtMYPYsdT4KiD6wbUbqM2eCKFYroJOg==,
+      }
+    cpu: [arm64]
+    os: [linux]
+
+  '@numpy-node/linux-x64@0.1.0':
+    resolution:
+      {
+        integrity: sha512-P8dsmWkhCLYf8fCkFI6it35pr7uM6S1SrmisijTYEFOqI4idfdue/WX4BNY11F6JLXZiWSX78Laurd024Rt3Gw==,
+      }
+    cpu: [x64]
+    os: [linux]
+
+  '@numpy-node/win32-x64@0.1.0':
+    resolution:
+      {
+        integrity: sha512-2WMtaGKVfshEbTpNVjejmgSmpVlqXT5WW2UsRHfCFLn41mkpgUWMnVNMvXuXLERthphFevhnZNzlEJ+/ibuLfQ==,
+      }
+    cpu: [x64]
+    os: [win32]
 
   '@pkgjs/parseargs@0.11.0':
     resolution:
@@ -3243,6 +3299,21 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@numpy-node/darwin-arm64@0.1.0':
+    optional: true
+
+  '@numpy-node/darwin-x64@0.1.0':
+    optional: true
+
+  '@numpy-node/linux-arm64@0.1.0':
+    optional: true
+
+  '@numpy-node/linux-x64@0.1.0':
+    optional: true
+
+  '@numpy-node/win32-x64@0.1.0':
+    optional: true
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
