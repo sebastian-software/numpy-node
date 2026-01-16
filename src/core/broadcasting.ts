@@ -1,5 +1,5 @@
 /**
- * Broadcasting utilities for numpy-ts
+ * Broadcasting utilities for np-ts
  * Implements NumPy-compatible broadcasting rules
  */
 

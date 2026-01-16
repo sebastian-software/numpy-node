@@ -1,5 +1,5 @@
 /**
- * Array creation routines for numpy-ts
+ * Array creation routines for np-ts
  * Provides NumPy-compatible functions for creating arrays
  */
 

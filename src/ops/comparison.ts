@@ -1,5 +1,5 @@
 /**
- * Comparison operations for numpy-ts
+ * Comparison operations for np-ts
  * Provides element-wise comparison with broadcasting support
  */
 

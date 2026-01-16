@@ -1,5 +1,5 @@
 /**
- * Indexing and slicing utilities for numpy-ts
+ * Indexing and slicing utilities for np-ts
  * Provides type-safe method-based slicing as an alternative to Python's bracket syntax
  */
 

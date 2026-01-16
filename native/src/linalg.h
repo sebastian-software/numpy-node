@@ -4,7 +4,7 @@
 #include <napi.h>
 #include "ndarray.h"
 
-namespace numpy_ts {
+namespace np_ts {
 namespace linalg {
 
 /**
@@ -82,6 +82,6 @@ Napi::Value Trace(const Napi::CallbackInfo& info);
 Napi::Object Init(Napi::Env env, Napi::Object exports);
 
 } // namespace linalg
-} // namespace numpy_ts
+} // namespace np_ts
 
 #endif // NUMPY_TS_LINALG_H

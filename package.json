@@ -1,7 +1,7 @@
 {
-  "name": "numpy-ts",
+  "name": "np-ts",
   "version": "0.1.0",
-  "description": "A high-performance TypeScript implementation of NumPy with C++ N-API backend",
+  "description": "A high-performance TypeScript implementation of NumPy with optional C++ N-API backend",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

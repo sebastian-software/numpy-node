@@ -5,7 +5,7 @@
 #include <cstdint>
 #include "ndarray.h"
 
-namespace numpy_ts {
+namespace np_ts {
 namespace random {
 
 /**
@@ -69,6 +69,6 @@ Napi::Value Randint(const Napi::CallbackInfo& info);
 Napi::Object Init(Napi::Env env, Napi::Object exports);
 
 } // namespace random
-} // namespace numpy_ts
+} // namespace np_ts
 
 #endif // NUMPY_TS_RANDOM_H

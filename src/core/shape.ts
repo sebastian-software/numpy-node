@@ -1,5 +1,5 @@
 /**
- * Shape utilities for numpy-ts
+ * Shape utilities for np-ts
  * Handles array shape validation, manipulation, and calculations
  */
 

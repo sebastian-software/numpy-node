@@ -9,12 +9,12 @@
  */
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Initialize core NDArray
-    numpy_ts::NativeNDArray::Init(env, exports);
+    np_ts::NativeNDArray::Init(env, exports);
 
     // Initialize submodules
-    numpy_ts::linalg::Init(env, exports);
-    numpy_ts::math::Init(env, exports);
-    numpy_ts::random::Init(env, exports);
+    np_ts::linalg::Init(env, exports);
+    np_ts::math::Init(env, exports);
+    np_ts::random::Init(env, exports);
 
     // Version info
     exports.Set("version", Napi::String::New(env, "0.1.0"));
@@ -31,4 +31,4 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     return exports;
 }
 
-NODE_API_MODULE(numpy_ts_native, Init)
+NODE_API_MODULE(np_ts_native, Init)

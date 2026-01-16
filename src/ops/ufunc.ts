@@ -1,5 +1,5 @@
 /**
- * Universal function (ufunc) base implementation for numpy-ts
+ * Universal function (ufunc) base implementation for np-ts
  * Provides infrastructure for element-wise operations with broadcasting
  */
 

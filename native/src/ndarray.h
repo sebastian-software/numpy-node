@@ -1,12 +1,12 @@
-#ifndef NUMPY_TS_NDARRAY_H
-#define NUMPY_TS_NDARRAY_H
+#ifndef NP_TS_NDARRAY_H
+#define NP_TS_NDARRAY_H
 
 #include <napi.h>
 #include <vector>
 #include <memory>
 #include <cstdint>
 
-namespace numpy_ts {
+namespace np_ts {
 
 /**
  * Data type enumeration matching TypeScript DTypeName
@@ -105,6 +105,6 @@ Napi::Value CreateArange(const Napi::CallbackInfo& info);
 Napi::Value CreateLinspace(const Napi::CallbackInfo& info);
 Napi::Value CreateEye(const Napi::CallbackInfo& info);
 
-} // namespace numpy_ts
+} // namespace np_ts
 
-#endif // NUMPY_TS_NDARRAY_H
+#endif // NP_TS_NDARRAY_H
