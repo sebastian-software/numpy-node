@@ -48,8 +48,8 @@ importers:
         specifier: ^3.4.0
         version: 3.8.0
       tinybench:
-        specifier: ^3.0.0
-        version: 3.1.1
+        specifier: ^6.0.0
+        version: 6.0.0
       tsup:
         specifier: ^8.3.0
         version: 8.5.1(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
@@ -2738,12 +2738,12 @@ packages:
         integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==,
       }
 
-  tinybench@3.1.1:
+  tinybench@6.0.0:
     resolution:
       {
-        integrity: sha512-74pmf47HY/bHqamcCMGris+1AtGGsqTZ3Hc/UK4QvSmRuf/9PIF9753+c8XBh7JfX2r9KeZtVjOYjd6vFpc0qQ==,
+        integrity: sha512-BWlWpVbbZXaYjRV0twGLNQO00Zj4HA/sjLOQP2IvzQqGwRGp+2kh7UU3ijyJ3ywFRogYDRbiHDMrUOfaMnN56g==,
       }
-    engines: { node: '>=18.0.0' }
+    engines: { node: '>=20.0.0' }
 
   tinyexec@0.3.2:
     resolution:
@@ -4517,7 +4517,7 @@ snapshots:
 
   tinybench@2.9.0: {}
 
-  tinybench@3.1.1: {}
+  tinybench@6.0.0: {}
 
   tinyexec@0.3.2: {}
 
