@@ -10,9 +10,6 @@ importers:
       '@numpy-node/darwin-arm64':
         specifier: 0.1.0
         version: 0.1.0
-      '@numpy-node/darwin-x64':
-        specifier: 0.1.0
-        version: 0.1.0
       '@numpy-node/linux-arm64':
         specifier: 0.1.0
         version: 0.1.0
@@ -688,14 +685,6 @@ packages:
         integrity: sha512-EQhwJ6HAnlx5JMCYpDiOthWAPBCGXJei7Yvyg/+QYm04G4MkAYXhliwjmS0IS5Yuzh5gqci51P6xhO7aiWbIIQ==,
       }
     cpu: [arm64]
-    os: [darwin]
-
-  '@numpy-node/darwin-x64@0.1.0':
-    resolution:
-      {
-        integrity: sha512-sm5J6UdkiTdrAU8VjMz21rXBhr69NXzNIa7zqQnDNiA+1S2x5jxGGKNdP1/xFIaY+v8OeaFIymS165bGGqh/Rw==,
-      }
-    cpu: [x64]
     os: [darwin]
 
   '@numpy-node/linux-arm64@0.1.0':
@@ -3301,9 +3290,6 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@numpy-node/darwin-arm64@0.1.0':
-    optional: true
-
-  '@numpy-node/darwin-x64@0.1.0':
     optional: true
 
   '@numpy-node/linux-arm64@0.1.0':
