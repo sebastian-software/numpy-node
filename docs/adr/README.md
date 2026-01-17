@@ -14,6 +14,7 @@ An ADR is a document that captures an important architectural decision made alon
 | [0001](0001-native-cpp-backend.md)      | Use Native C++ Backend with N-API      | Accepted |
 | [0002](0002-blas-lapack-backend.md)     | Platform-Specific BLAS/LAPACK Backends | Accepted |
 | [0003](0003-row-major-memory-layout.md) | Row-Major Memory Layout                | Accepted |
+| [0004](0004-cpu-based-computation.md)   | CPU-Based Computation (No GPU)         | Accepted |
 
 ## Creating a New ADR
 
