@@ -1,9 +1,8 @@
 name: Publish
 
 on:
-  workflow_call: # Called by release-please
   release:
-    types: [published] # Also trigger on manual releases
+    types: [published] # Triggered when release-please creates a release
   workflow_dispatch:
     inputs:
       dry-run:
