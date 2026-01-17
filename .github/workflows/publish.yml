@@ -62,7 +62,7 @@ jobs:
       - name: Install OpenBLAS and LAPACK (Windows)
         if: matrix.os == 'win32'
         run: |
-          vcpkg install openblas[lapack]:x64-windows
+          vcpkg install openblas:x64-windows lapack-reference:x64-windows
           echo "CMAKE_PREFIX_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
 
       - name: Install dependencies
@@ -127,7 +127,7 @@ jobs:
           node -e "
             const fs = require('fs');
             const version = '$VERSION';
-            const platforms = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'win32-x64'];
+            const platforms = ['darwin-arm64', 'linux-x64', 'linux-arm64', 'win32-x64'];
             for (const platform of platforms) {
               const pkgPath = 'packages/' + platform + '/package.json';
               const json = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
