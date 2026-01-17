@@ -831,42 +831,45 @@ function scenarioJacobiIteration() {
   /**
    * Jacobi iterative method for solving Ax = b.
    * Common in numerical linear algebra.
+   * Vectorized implementation matching NumPy: x = (b - R @ x) / D
    */
-  // Create diagonally dominant matrix
   const n = 200;
   const A = randomMatrix(n, n);
-  const b = randomVector(n);
 
-  // Make diagonally dominant
+  // Make diagonally dominant (like NumPy)
   const Adata = A.data as Float64Array;
   for (let i = 0; i < n; i++) {
     let rowSum = 0;
     for (let j = 0; j < n; j++) {
-      if (i !== j) rowSum += Math.abs(Adata[i * n + j]);
+      rowSum += Math.abs(Adata[i * n + j]);
     }
     Adata[i * n + i] = rowSum + 1;
   }
 
-  return function jacobi() {
-    const bData = b.data as Float64Array;
-    let x = new Float64Array(n); // Initial guess = 0
-    const xNew = new Float64Array(n);
+  const b = randomVector(n);
 
-    // 50 iterations
+  // Extract D (diagonal) and R (A - diag(D)) like NumPy
+  const Ddata = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    Ddata[i] = Adata[i * n + i];
+  }
+  const D = array(Array.from(Ddata));
+
+  // R = A with diagonal set to 0
+  const Rdata = new Float64Array(n * n);
+  for (let i = 0; i < n * n; i++) Rdata[i] = Adata[i];
+  for (let i = 0; i < n; i++) Rdata[i * n + i] = 0;
+  const R = array(Array.from(Rdata)).reshape([n, n]);
+
+  return function jacobi() {
+    let x = zeros([n]);
+
+    // 50 iterations using vectorized operations (like NumPy)
     for (let iter = 0; iter < 50; iter++) {
-      for (let i = 0; i < n; i++) {
-        let sigma = 0;
-        for (let j = 0; j < n; j++) {
-          if (i !== j) {
-            sigma += Adata[i * n + j] * x[j];
-          }
-        }
-        xNew[i] = (bData[i] - sigma) / Adata[i * n + i];
-      }
-      // Swap
-      const tmp = x;
-      x = xNew;
-      // xNew = tmp; // Not needed, will be overwritten
+      // x = (b - R @ x) / D
+      const Rx = matmul(R, x.reshape([n, 1])).reshape([n]);
+      const bMinusRx = subtract(b, Rx);
+      x = divide(bMinusRx, D);
     }
     return x;
   };
