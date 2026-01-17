@@ -1,6 +1,14 @@
 # numpy-node
 
-> NumPy for Node.js - Fast, type-safe n-dimensional arrays with native BLAS/LAPACK acceleration
+<p align="center">
+  <a href="https://numpy.org/"><img src="https://numpy.org/images/logo.svg" alt="NumPy" height="60"></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <span style="font-size: 2em">+</span>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://nodejs.org/"><img src="https://nodejs.org/static/logos/nodejsLight.svg" alt="Node.js" height="60"></a>
+</p>
+
+> [NumPy](https://numpy.org/) for [Node.js](https://nodejs.org/) - Fast, type-safe n-dimensional arrays with native BLAS/LAPACK acceleration
 
 [![npm version](https://img.shields.io/npm/v/numpy-node.svg)](https://www.npmjs.com/package/numpy-node)
 [![CI](https://github.com/sebastian-software/numpy-node/actions/workflows/ci.yml/badge.svg)](https://github.com/sebastian-software/numpy-node/actions/workflows/ci.yml)
@@ -8,7 +16,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22-green.svg)](https://nodejs.org/)
 
-**numpy-node** brings the power of NumPy to the Node.js ecosystem. Write scientific computing code in TypeScript with a familiar API, backed by native C++ for maximum performance.
+**numpy-node** brings the power of [NumPy](https://numpy.org/) to the Node.js ecosystem. Write scientific computing code in TypeScript with a familiar API, backed by native C++ for maximum performance.
 
 ## Why numpy-node?
 
@@ -204,10 +212,12 @@ pnpm test
 numpy-node uses a hybrid approach:
 
 - **TypeScript layer** - API, array creation, shape manipulation, broadcasting logic
-- **Native C++ layer** - Performance-critical operations via N-API
-- **Platform-optimized BLAS/LAPACK** - Accelerate (macOS), OpenBLAS (Linux/Windows)
+- **Native C++ layer** - Performance-critical operations via [N-API](https://nodejs.org/api/n-api.html)
+- **Platform-optimized BLAS/LAPACK** - [Accelerate](https://developer.apple.com/accelerate/) (macOS), [OpenBLAS](https://www.openblas.net/) (Linux/Windows)
 
 The native binaries are distributed as platform-specific npm packages (`@numpy-node/darwin-arm64`, etc.) and automatically selected via `optionalDependencies`.
+
+For detailed design decisions, see the [Architecture Decision Records](docs/adr/).
 
 ## Security
 
