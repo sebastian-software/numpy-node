@@ -988,7 +988,7 @@ function scenarioSoftmaxCrossEntropy() {
     // Cross-entropy: -sum(labels * log(probs))
     const logProbs = log(add(probs, 1e-10)); // Add epsilon for numerical stability
     const ce = multiply(labels, logProbs);
-    const loss = multiply(sum(ce), -1);
+    const loss = -(sum(ce) as number);
     return loss;
   };
 }
