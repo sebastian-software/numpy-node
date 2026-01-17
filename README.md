@@ -1,18 +1,22 @@
 # numpy-node
 
-A high-performance TypeScript implementation of NumPy with native C++ backend using BLAS/LAPACK.
+> NumPy for Node.js - Fast, type-safe n-dimensional arrays with native BLAS/LAPACK acceleration
 
-[![CI](https://github.com/YOUR_USERNAME/numpy-node/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/numpy-node/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/YOUR_USERNAME/numpy-node/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/numpy-node)
-[![npm version](https://badge.fury.io/js/numpy-node.svg)](https://www.npmjs.com/package/numpy-node)
+[![npm version](https://img.shields.io/npm/v/numpy-node.svg)](https://www.npmjs.com/package/numpy-node)
+[![CI](https://github.com/sebastian-software/numpy-node/actions/workflows/ci.yml/badge.svg)](https://github.com/sebastian-software/numpy-node/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22-green.svg)](https://nodejs.org/)
 
-## Features
+**numpy-node** brings the power of NumPy to the Node.js ecosystem. Write scientific computing code in TypeScript with a familiar API, backed by native C++ for maximum performance.
 
-- **NumPy-compatible API** - Familiar interface for Python developers
-- **Native performance** - C++ backend with BLAS/LAPACK acceleration
-- **Full TypeScript support** - Complete type definitions
-- **Cross-platform** - macOS (Accelerate), Linux (OpenBLAS), Windows (OpenBLAS)
+## Why numpy-node?
+
+- **Familiar API** - If you know NumPy, you know numpy-node
+- **Native Performance** - BLAS/LAPACK acceleration via platform-optimized libraries
+- **Type-Safe** - Full TypeScript support with intelligent autocompletion
+- **Zero Config** - Prebuilt binaries for all major platforms, no compiler needed
+- **Lightweight** - Only installs the binary for your platform (~280KB)
 
 ## Installation
 
@@ -151,19 +155,31 @@ const e = add(a, d); // broadcasts d to match a
 // [[11, 12, 13], [24, 25, 26]]
 ```
 
+## Supported Platforms
+
+| Platform | Architecture | Native Backend   |
+| -------- | ------------ | ---------------- |
+| macOS    | ARM64 (M1+)  | Apple Accelerate |
+| Linux    | x64          | OpenBLAS         |
+| Linux    | ARM64        | OpenBLAS         |
+| Windows  | x64          | OpenBLAS         |
+
+Prebuilt binaries are included - no compiler required for end users.
+
 ## Development
 
 ### Prerequisites
 
-- Node.js >= 20.0.0
+- Node.js >= 22.0.0
 - pnpm
 - CMake >= 3.15
 - C++ compiler (clang, gcc, or MSVC)
+- BLAS/LAPACK development libraries
 
 ### Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/numpy-node.git
+git clone https://github.com/sebastian-software/numpy-node.git
 cd numpy-node
 pnpm install
 pnpm build:native
@@ -185,13 +201,17 @@ pnpm test
 
 ## Architecture
 
-numpy-node uses a native C++ backend for performance-critical operations:
+numpy-node uses a hybrid approach:
 
-- **macOS**: Apple Accelerate framework (vecLib/BLAS/LAPACK)
-- **Linux**: OpenBLAS
-- **Windows**: OpenBLAS
+- **TypeScript layer** - API, array creation, shape manipulation, broadcasting logic
+- **Native C++ layer** - Performance-critical operations via N-API
+- **Platform-optimized BLAS/LAPACK** - Accelerate (macOS), OpenBLAS (Linux/Windows)
 
-See the [Architecture Decision Records](docs/adr/) for design decisions.
+The native binaries are distributed as platform-specific npm packages (`@numpy-node/darwin-arm64`, etc.) and automatically selected via `optionalDependencies`.
+
+## Security
+
+This package uses [npm Trusted Publishing](https://docs.npmjs.com/generating-provenance-statements) with cryptographic provenance attestation. Every release is built in GitHub Actions and signed, providing a verifiable link between the published package and its source code.
 
 ## License
 
@@ -199,10 +219,16 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Contributions are welcome! Please read our contributing guidelines and submit pull requests.
+Contributions are welcome! Please follow these steps:
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
+2. Create a feature branch (`git checkout -b feat/amazing-feature`)
+3. Use [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, etc.)
+4. Run tests and linting (`pnpm test && pnpm lint`)
 5. Submit a pull request
+
+## Related Projects
+
+- [NumPy](https://numpy.org/) - The original Python library
+- [ndarray](https://github.com/scijs/ndarray) - Modular n-dimensional arrays for JavaScript
+- [tensorflow.js](https://www.tensorflow.org/js) - ML library with tensor operations

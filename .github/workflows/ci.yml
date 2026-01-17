@@ -64,12 +64,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libopenblas-dev liblapack-dev
 
-      - name: Install OpenBLAS (Windows)
+      - name: Install OpenBLAS and LAPACK (Windows)
         if: runner.os == 'Windows'
         run: |
-          vcpkg install openblas:x64-windows
+          vcpkg install openblas:x64-windows lapack-reference:x64-windows
           echo "CMAKE_PREFIX_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
-          echo "OPENBLAS_ROOT=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
 
       - name: Install dependencies
         run: pnpm install

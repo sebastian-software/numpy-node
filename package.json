@@ -43,11 +43,15 @@
     "mathematics",
     "statistics"
   ],
-  "author": "",
+  "author": "Sebastian Software GmbH",
   "license": "MIT",
+  "homepage": "https://github.com/sebastian-software/numpy-node#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/sebastian-software/numpy-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sebastian-software/numpy-node/issues"
   },
   "engines": {
     "node": ">=22.0.0"
