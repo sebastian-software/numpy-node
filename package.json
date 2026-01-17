@@ -45,6 +45,10 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sebastian-software/numpy-node.git"
+  },
   "engines": {
     "node": ">=22.0.0"
   },
