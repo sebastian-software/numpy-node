@@ -1,6 +1,13 @@
-#include "random.h"
-#define _USE_MATH_DEFINES // Required for M_PI on Windows/MSVC
+// Must be before ANY includes for MSVC M_PI support
+#define _USE_MATH_DEFINES
 #include <cmath>
+
+// Fallback if M_PI still not defined
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#include "random.h"
 #include <cstring>
 #include <chrono>
 
