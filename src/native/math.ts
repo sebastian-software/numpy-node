@@ -241,3 +241,28 @@ export function softmax(a: NDArray): NDArray {
 export function pdist_sq(a: NDArray): NDArray {
   return new NDArray(math.pdist_sq(a._native));
 }
+
+/**
+ * Affine transform: gamma * x + beta
+ * Fused multiply-add with row broadcasting.
+ * Common in layer normalization and batch normalization.
+ */
+export function affine(x: NDArray, gamma: NDArray, beta: NDArray): NDArray {
+  return new NDArray(math.affine(x._native, gamma._native, beta._native));
+}
+
+/**
+ * Compute X.T @ X without explicit transpose.
+ * Uses BLAS dsyrk for efficient symmetric matrix computation.
+ */
+export function xtx(x: NDArray): NDArray {
+  return new NDArray(math.xtx(x._native));
+}
+
+/**
+ * Compute X.T @ y without explicit transpose.
+ * Uses BLAS dgemv with transpose flag.
+ */
+export function xty(x: NDArray, y: NDArray): NDArray {
+  return new NDArray(math.xty(x._native, y._native));
+}

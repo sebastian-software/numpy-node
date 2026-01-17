@@ -56,6 +56,9 @@ export {
   gram_matrix,
   softmax,
   pdist_sq,
+  affine,
+  xtx,
+  xty,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)

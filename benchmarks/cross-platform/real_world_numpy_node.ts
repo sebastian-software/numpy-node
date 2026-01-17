@@ -35,6 +35,9 @@ import {
   gram_matrix,
   softmax,
   pdist_sq,
+  affine,
+  xtx,
+  xty,
   NDArray,
 } from '../../src/index.js';
 
@@ -383,13 +386,13 @@ function scenarioOuterProductSum() {
   /**
    * Sum of outer products - used in covariance estimation.
    * Computes sum of x_i * x_i^T for all samples.
+   * Uses fused xtx() for optimal performance.
    */
   const vectors = randomMatrix(1000, 100); // 1000 vectors of dim 100
 
   return function outerSum() {
-    // X^T @ X gives sum of outer products
-    const Xt = vectors.T;
-    const result = matmul(Xt, vectors);
+    // X^T @ X using optimized dsyrk (no transpose copy)
+    const result = xtx(vectors);
     return result;
   };
 }
@@ -418,6 +421,7 @@ function scenarioGradientDescent() {
   /**
    * Single gradient descent step for linear regression.
    * X: features, y: target, theta: parameters
+   * Uses fused xty() for X.T @ errors without transpose copy.
    */
   const X = randomMatrix(10000, 50);
   const y = randomMatrix(10000, 1);
@@ -432,9 +436,8 @@ function scenarioGradientDescent() {
     // errors = predictions - y
     const errors = subtract(predictions, y);
 
-    // gradient = (1/m) * X.T @ errors
-    const Xt = X.T;
-    const grad = matmul(Xt, errors);
+    // gradient = (1/m) * X.T @ errors (using optimized xty)
+    const grad = xty(X, errors);
     const scaledGrad = divide(grad, m);
 
     // new_theta = theta - lr * gradient
@@ -695,6 +698,7 @@ function scenarioLayerNorm() {
   /**
    * Layer normalization - normalize across features.
    * Used in transformers.
+   * Uses fused affine() for optimal performance.
    */
   // 1000 samples, 512 features
   const data = randomMatrix(1000, 512);
@@ -705,9 +709,8 @@ function scenarioLayerNorm() {
     // Normalize along axis=1 (each row independently)
     const normalized = zscore(data, 1);
 
-    // Apply scale and shift: gamma * normalized + beta
-    const scaled = multiply(normalized, gamma);
-    const result = add(scaled, beta);
+    // Fused operation: gamma * normalized + beta
+    const result = affine(normalized, gamma, beta);
     return result;
   };
 }
@@ -954,6 +957,7 @@ function scenarioRidgeRegression() {
   /**
    * Ridge regression: (X'X + λI)^{-1} X'y
    * Regularized least squares.
+   * Uses fused xtx() and xty() for optimal performance.
    */
   const X = randomMatrix(5000, 100);
   const y = randomMatrix(5000, 1);
@@ -961,15 +965,16 @@ function scenarioRidgeRegression() {
   const n = 100;
 
   return function ridge() {
-    const Xt = X.T;
-    const XtX = matmul(Xt, X);
+    // X'X using optimized dsyrk (no transpose copy)
+    const XtX = xtx(X);
 
     // Add regularization: XtX + λI
     const reg = multiply(eye(n), lambda);
     const XtXreg = add(XtX, reg);
 
-    const Xty = matmul(Xt, y);
-    const beta = solve(XtXreg, Xty);
+    // X'y using optimized dgemv (no transpose copy)
+    const Xty_result = xty(X, y);
+    const beta = solve(XtXreg, Xty_result);
     return beta;
   };
 }

@@ -144,6 +144,9 @@ export interface MathModule {
   gram_matrix(a: NativeNDArray): NativeNDArray;
   softmax(a: NativeNDArray): NativeNDArray;
   pdist_sq(a: NativeNDArray): NativeNDArray;
+  affine(x: NativeNDArray, gamma: NativeNDArray, beta: NativeNDArray): NativeNDArray;
+  xtx(x: NativeNDArray): NativeNDArray;
+  xty(x: NativeNDArray, y: NativeNDArray): NativeNDArray;
 }
 
 /**
