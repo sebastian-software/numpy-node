@@ -217,6 +217,8 @@ This package uses [npm Trusted Publishing](https://docs.npmjs.com/generating-pro
 
 MIT License - see [LICENSE](LICENSE) for details.
 
+Copyright (c) 2025-present [Sebastian Software GmbH](https://sebastian-software.de)
+
 ## Contributing
 
 Contributions are welcome! Please follow these steps:
