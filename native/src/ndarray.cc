@@ -4,6 +4,10 @@
 #include <stdexcept>
 #include <numeric>
 
+#if defined(USE_ACCELERATE)
+    #include <Accelerate/Accelerate.h>
+#endif
+
 namespace numpy_node {
 
 Napi::FunctionReference NativeNDArray::constructor;
@@ -138,7 +142,12 @@ NativeNDArray::NativeNDArray(const Napi::CallbackInfo& info)
         Napi::Error::New(env, "Failed to allocate memory").ThrowAsJavaScriptException();
         return;
     }
-    std::memset(data_, 0, byte_size);
+
+    // Check if we should skip zero-initialization (3rd argument = skipInit)
+    bool skipInit = (info.Length() >= 3 && info[2].IsBoolean() && info[2].As<Napi::Boolean>().Value());
+    if (!skipInit) {
+        std::memset(data_, 0, byte_size);
+    }
 }
 
 NativeNDArray::~NativeNDArray() {
@@ -460,20 +469,45 @@ Napi::Value CreateZeros(const Napi::CallbackInfo& info) {
 Napi::Value CreateOnes(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    Napi::Object arr = CreateZeros(info).As<Napi::Object>();
+    if (info.Length() < 1 || !info[0].IsArray()) {
+        Napi::TypeError::New(env, "Expected shape array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    std::string dtype = "float64";
+    if (info.Length() >= 2 && info[1].IsString()) {
+        dtype = info[1].As<Napi::String>().Utf8Value();
+    }
+
+    // Create array with skipInit=true to avoid double-initialization
+    Napi::Object arr = NativeNDArray::constructor.New({
+        info[0],
+        Napi::String::New(env, dtype),
+        Napi::Boolean::New(env, true)  // skipInit
+    });
     NativeNDArray* ndarr = Napi::ObjectWrap<NativeNDArray>::Unwrap(arr);
 
-    // Fill with ones
+    // Fill with ones using vectorized operations where available
     size_t total = ndarr->size();
     switch (ndarr->dtype()) {
         case DType::Float64: {
             double* data = static_cast<double*>(ndarr->data());
+#if defined(USE_ACCELERATE)
+            double one = 1.0;
+            vDSP_vfillD(&one, data, 1, total);
+#else
             for (size_t i = 0; i < total; i++) data[i] = 1.0;
+#endif
             break;
         }
         case DType::Float32: {
             float* data = static_cast<float*>(ndarr->data());
+#if defined(USE_ACCELERATE)
+            float one = 1.0f;
+            vDSP_vfill(&one, data, 1, total);
+#else
             for (size_t i = 0; i < total; i++) data[i] = 1.0f;
+#endif
             break;
         }
         case DType::Int32: {
@@ -510,19 +544,33 @@ Napi::Value CreateFull(const Napi::CallbackInfo& info) {
         dtype = info[2].As<Napi::String>().Utf8Value();
     }
 
-    Napi::Object arr = NativeNDArray::constructor.New({info[0], Napi::String::New(env, dtype)});
+    // Create array with skipInit=true to avoid double-initialization
+    Napi::Object arr = NativeNDArray::constructor.New({
+        info[0],
+        Napi::String::New(env, dtype),
+        Napi::Boolean::New(env, true)  // skipInit
+    });
     NativeNDArray* ndarr = Napi::ObjectWrap<NativeNDArray>::Unwrap(arr);
 
     size_t total = ndarr->size();
     switch (ndarr->dtype()) {
         case DType::Float64: {
             double* data = static_cast<double*>(ndarr->data());
+#if defined(USE_ACCELERATE)
+            vDSP_vfillD(&fillValue, data, 1, total);
+#else
             for (size_t i = 0; i < total; i++) data[i] = fillValue;
+#endif
             break;
         }
         case DType::Float32: {
             float* data = static_cast<float*>(ndarr->data());
+#if defined(USE_ACCELERATE)
+            float fillF = static_cast<float>(fillValue);
+            vDSP_vfill(&fillF, data, 1, total);
+#else
             for (size_t i = 0; i < total; i++) data[i] = static_cast<float>(fillValue);
+#endif
             break;
         }
         case DType::Int32: {
@@ -617,9 +665,14 @@ Napi::Value CreateArange(const Napi::CallbackInfo& info) {
     NativeNDArray* ndarr = Napi::ObjectWrap<NativeNDArray>::Unwrap(arr);
 
     double* data = static_cast<double*>(ndarr->data());
+#if defined(USE_ACCELERATE)
+    // vDSP_vrampD creates: data[i] = start + i * step
+    vDSP_vrampD(&start, &step, data, 1, static_cast<vDSP_Length>(length));
+#else
     for (int64_t i = 0; i < length; i++) {
         data[i] = start + i * step;
     }
+#endif
 
     return arr;
 }
@@ -654,11 +707,15 @@ Napi::Value CreateLinspace(const Napi::CallbackInfo& info) {
 
     double* data = static_cast<double*>(ndarr->data());
     double divisor = endpoint ? (num - 1) : num;
-    double step = (stop - start) / divisor;
+    double step = (divisor > 0) ? (stop - start) / divisor : 0;
 
+#if defined(USE_ACCELERATE)
+    vDSP_vrampD(&start, &step, data, 1, static_cast<vDSP_Length>(num));
+#else
     for (int64_t i = 0; i < num; i++) {
         data[i] = start + i * step;
     }
+#endif
 
     return arr;
 }

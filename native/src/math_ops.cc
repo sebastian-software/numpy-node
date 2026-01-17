@@ -421,28 +421,83 @@ Napi::Value Power(const Napi::CallbackInfo& info) {
     return BinaryOp(info, [](double a, double b) { return std::pow(a, b); });
 }
 
+// Vectorized unary operations using Accelerate/vecLib on macOS
+#if defined(USE_ACCELERATE)
+// Helper for vecLib unary operations
+template<typename VecLibFn>
+Napi::Value VecLibUnaryOp(const Napi::CallbackInfo& info, VecLibFn vecFn) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* dataA = static_cast<double*>(a->data());
+    int n = static_cast<int>(a->size());
+
+    Napi::Array shape = Napi::Array::New(env, a->shape().size());
+    for (size_t i = 0; i < a->shape().size(); i++) {
+        shape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(a->shape()[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({shape, Napi::String::New(env, "float64")});
+    NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataC = static_cast<double*>(c->data());
+
+    vecFn(dataC, dataA, &n);
+
+    return result;
+}
+#endif
+
 Napi::Value Sqrt(const Napi::CallbackInfo& info) {
+#if defined(USE_ACCELERATE)
+    return VecLibUnaryOp(info, vvsqrt);
+#else
     return UnaryOp(info, [](double a) { return std::sqrt(a); });
+#endif
 }
 
 Napi::Value Exp(const Napi::CallbackInfo& info) {
+#if defined(USE_ACCELERATE)
+    return VecLibUnaryOp(info, vvexp);
+#else
     return UnaryOp(info, [](double a) { return std::exp(a); });
+#endif
 }
 
 Napi::Value Log(const Napi::CallbackInfo& info) {
+#if defined(USE_ACCELERATE)
+    return VecLibUnaryOp(info, vvlog);
+#else
     return UnaryOp(info, [](double a) { return std::log(a); });
+#endif
 }
 
 Napi::Value Sin(const Napi::CallbackInfo& info) {
+#if defined(USE_ACCELERATE)
+    return VecLibUnaryOp(info, vvsin);
+#else
     return UnaryOp(info, [](double a) { return std::sin(a); });
+#endif
 }
 
 Napi::Value Cos(const Napi::CallbackInfo& info) {
+#if defined(USE_ACCELERATE)
+    return VecLibUnaryOp(info, vvcos);
+#else
     return UnaryOp(info, [](double a) { return std::cos(a); });
+#endif
 }
 
 Napi::Value Tan(const Napi::CallbackInfo& info) {
+#if defined(USE_ACCELERATE)
+    return VecLibUnaryOp(info, vvtan);
+#else
     return UnaryOp(info, [](double a) { return std::tan(a); });
+#endif
 }
 
 Napi::Value Abs(const Napi::CallbackInfo& info) {
