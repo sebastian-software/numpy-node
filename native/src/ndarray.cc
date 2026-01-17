@@ -137,16 +137,21 @@ NativeNDArray::NativeNDArray(const Napi::CallbackInfo& info)
     // Allocate memory
     int64_t total_size = size();
     size_t byte_size = total_size * dtype_size(dtype_);
-    data_ = std::malloc(byte_size);
-    if (!data_) {
-        Napi::Error::New(env, "Failed to allocate memory").ThrowAsJavaScriptException();
-        return;
-    }
 
     // Check if we should skip zero-initialization (3rd argument = skipInit)
     bool skipInit = (info.Length() >= 3 && info[2].IsBoolean() && info[2].As<Napi::Boolean>().Value());
-    if (!skipInit) {
-        std::memset(data_, 0, byte_size);
+
+    if (skipInit) {
+        // For ones/full: use malloc (will be overwritten anyway)
+        data_ = std::malloc(byte_size);
+    } else {
+        // For zeros: use calloc for OS-level lazy zeroing optimization
+        data_ = std::calloc(total_size, dtype_size(dtype_));
+    }
+
+    if (!data_) {
+        Napi::Error::New(env, "Failed to allocate memory").ThrowAsJavaScriptException();
+        return;
     }
 }
 
@@ -219,10 +224,22 @@ Napi::Value NativeNDArray::GetData(const Napi::CallbackInfo& info) {
 
     size_t byte_length = size() * dtype_size(dtype_);
 
-    // Create an ArrayBuffer from our data
-    // Note: We're creating a copy here for safety - the caller gets their own buffer
-    Napi::ArrayBuffer buffer = Napi::ArrayBuffer::New(env, byte_length);
-    std::memcpy(buffer.Data(), data_, byte_length);
+    // Create or reuse cached ArrayBuffer (zero-copy)
+    // The ArrayBuffer directly references our data_ pointer without copying
+    if (!cached_buffer_) {
+        // Create ArrayBuffer with external data - no copy!
+        // Data lifetime is managed by NativeNDArray, so no finalizer needed
+        Napi::ArrayBuffer buffer = Napi::ArrayBuffer::New(
+            env,
+            data_,
+            byte_length
+        );
+        cached_buffer_ = std::make_unique<Napi::Reference<Napi::ArrayBuffer>>(
+            Napi::Persistent(buffer)
+        );
+    }
+
+    Napi::ArrayBuffer buffer = cached_buffer_->Value();
 
     // Create appropriate TypedArray view
     switch (dtype_) {
@@ -329,7 +346,6 @@ Napi::Value NativeNDArray::Transpose(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     std::vector<int64_t> newShape(shape_.rbegin(), shape_.rend());
-    std::vector<int64_t> newStrides(strides_.rbegin(), strides_.rend());
 
     Napi::Array shapeArr = Napi::Array::New(env, newShape.size());
     for (size_t i = 0; i < newShape.size(); i++) {
@@ -338,13 +354,59 @@ Napi::Value NativeNDArray::Transpose(const Napi::CallbackInfo& info) {
 
     Napi::Object result = constructor.New({
         shapeArr,
-        Napi::String::New(env, dtype_to_string(dtype_))
+        Napi::String::New(env, dtype_to_string(dtype_)),
+        Napi::Boolean::New(env, true)  // skipInit
     });
 
-    // For now, just copy data - proper strided transpose would be more complex
     NativeNDArray* transposed = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    // This is a simplified implementation - full transpose would need proper striding
-    std::memcpy(transposed->data_, data_, size() * dtype_size(dtype_));
+    double* srcData = static_cast<double*>(data_);
+    double* dstData = static_cast<double*>(transposed->data_);
+
+    // Fast path for 2D arrays (most common case)
+    if (shape_.size() == 2) {
+        int64_t rows = shape_[0];
+        int64_t cols = shape_[1];
+
+        // Transpose: dst[j, i] = src[i, j]
+        // In row-major: dst[j * rows + i] = src[i * cols + j]
+        // Note: Naive loop is faster than vDSP_mtransD for typical sizes
+        for (int64_t i = 0; i < rows; i++) {
+            for (int64_t j = 0; j < cols; j++) {
+                dstData[j * rows + i] = srcData[i * cols + j];
+            }
+        }
+        return result;
+    }
+
+    // 1D arrays - just copy (transpose is identity)
+    if (shape_.size() == 1) {
+        std::memcpy(dstData, srcData, size() * dtype_size(dtype_));
+        return result;
+    }
+
+    // Generic N-dimensional transpose (reverse all axes)
+    int64_t totalSize = size();
+    int ndim = static_cast<int>(shape_.size());
+    std::vector<int64_t> indices(ndim, 0);
+
+    for (int64_t flatIdx = 0; flatIdx < totalSize; flatIdx++) {
+        // Compute multi-dimensional indices from flat index
+        int64_t temp = flatIdx;
+        for (int i = ndim - 1; i >= 0; i--) {
+            indices[i] = temp % shape_[i];
+            temp /= shape_[i];
+        }
+
+        // Compute transposed flat index (reversed indices)
+        int64_t transposedFlatIdx = 0;
+        int64_t multiplier = 1;
+        for (int i = 0; i < ndim; i++) {
+            transposedFlatIdx += indices[i] * multiplier;
+            multiplier *= newShape[ndim - 1 - i];
+        }
+
+        dstData[transposedFlatIdx] = srcData[flatIdx];
+    }
 
     return result;
 }

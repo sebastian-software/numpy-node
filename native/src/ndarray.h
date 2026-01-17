@@ -93,6 +93,9 @@ private:
     bool owns_data_;
     int64_t offset_;
 
+    // Cached ArrayBuffer for zero-copy data access
+    std::unique_ptr<Napi::Reference<Napi::ArrayBuffer>> cached_buffer_;
+
     void compute_strides();
 };
 

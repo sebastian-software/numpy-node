@@ -111,6 +111,8 @@ export interface LinalgModule {
   norm(a: NativeNDArray, ord?: number | string): number;
   matrix_rank(a: NativeNDArray): number;
   trace(a: NativeNDArray): number;
+  lstsq(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
+  normal_equations(X: NativeNDArray, y: NativeNDArray): NativeNDArray;
 }
 
 /**
@@ -137,6 +139,11 @@ export interface MathModule {
   min(a: NativeNDArray, axis?: number): NativeNDArray | number;
   max(a: NativeNDArray, axis?: number): NativeNDArray | number;
   abs(a: NativeNDArray): NativeNDArray;
+  zscore(a: NativeNDArray, axis?: number): NativeNDArray;
+  corrcoef(a: NativeNDArray): NativeNDArray;
+  gram_matrix(a: NativeNDArray): NativeNDArray;
+  softmax(a: NativeNDArray): NativeNDArray;
+  pdist_sq(a: NativeNDArray): NativeNDArray;
 }
 
 /**

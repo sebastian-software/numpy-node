@@ -51,6 +51,11 @@ export {
   prod,
   abs,
   negative,
+  zscore,
+  corrcoef,
+  gram_matrix,
+  softmax,
+  pdist_sq,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)
@@ -70,6 +75,8 @@ export {
   matrix_rank,
   trace,
   cond,
+  lstsq,
+  normal_equations,
 } from './linalg.js';
 
 // Random number generation

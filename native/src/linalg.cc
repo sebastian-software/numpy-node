@@ -56,6 +56,20 @@
 
         void dpotrf_(const char* uplo, const int* n, double* a, const int* lda,
                     int* info);
+
+        // Least squares solver
+        void dgels_(const char* trans, const int* m, const int* n, const int* nrhs,
+                   double* a, const int* lda, double* b, const int* ldb,
+                   double* work, const int* lwork, int* info);
+
+        // Symmetric rank-k update: C = alpha * A' * A + beta * C
+        void dsyrk_(const char* uplo, const char* trans, const int* n, const int* k,
+                   const double* alpha, const double* a, const int* lda,
+                   const double* beta, double* c, const int* ldc);
+
+        // Symmetric positive definite solve
+        void dposv_(const char* uplo, const int* n, const int* nrhs,
+                   double* a, const int* lda, double* b, const int* ldb, int* info);
     }
 #endif
 
@@ -723,17 +737,19 @@ Napi::Value Svd(const Napi::CallbackInfo& info) {
     transpose(static_cast<double*>(a->data()), aCopy.data(), m, n);
 
     std::vector<double> s(minmn);
-    std::vector<double> u(m * m);
-    std::vector<double> vt(n * n);
+    // Economy SVD: U is m x minmn, Vt is minmn x n
+    std::vector<double> u(m * minmn);
+    std::vector<double> vt(minmn * n);
     std::vector<double> work(1);
     int lwork = -1;
     int lapackInfo = 0;
 
-    char jobu = 'A', jobvt = 'A';
+    // Use 'S' for economy (thin) SVD - much faster for non-square matrices
+    char jobu = 'S', jobvt = 'S';
 
     // Query workspace size
     dgesvd_(&jobu, &jobvt, &m, &n, aCopy.data(), &m,
-            s.data(), u.data(), &m, vt.data(), &n,
+            s.data(), u.data(), &m, vt.data(), &minmn,
             work.data(), &lwork, &lapackInfo);
 
     lwork = static_cast<int>(work[0]);
@@ -741,7 +757,7 @@ Napi::Value Svd(const Napi::CallbackInfo& info) {
 
     // Compute SVD
     dgesvd_(&jobu, &jobvt, &m, &n, aCopy.data(), &m,
-            s.data(), u.data(), &m, vt.data(), &n,
+            s.data(), u.data(), &m, vt.data(), &minmn,
             work.data(), &lwork, &lapackInfo);
 
     if (lapackInfo != 0) {
@@ -749,28 +765,28 @@ Napi::Value Svd(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    // Create U array (transpose back to row-major)
+    // Create U array (transpose back to row-major): m x minmn
     Napi::Array uShape = Napi::Array::New(env, 2);
     uShape.Set(uint32_t(0), Napi::Number::New(env, m));
-    uShape.Set(uint32_t(1), Napi::Number::New(env, m));
-    Napi::Object uResult = NativeNDArray::constructor.New({uShape, Napi::String::New(env, "float64")});
+    uShape.Set(uint32_t(1), Napi::Number::New(env, minmn));
+    Napi::Object uResult = NativeNDArray::constructor.New({uShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)});
     NativeNDArray* uArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(uResult);
-    transposeBack(u.data(), static_cast<double*>(uArr->data()), m, m);
+    transposeBack(u.data(), static_cast<double*>(uArr->data()), minmn, m);
 
     // Create S array
     Napi::Array sShape = Napi::Array::New(env, 1);
     sShape.Set(uint32_t(0), Napi::Number::New(env, minmn));
-    Napi::Object sResult = NativeNDArray::constructor.New({sShape, Napi::String::New(env, "float64")});
+    Napi::Object sResult = NativeNDArray::constructor.New({sShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)});
     NativeNDArray* sArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(sResult);
     std::memcpy(sArr->data(), s.data(), minmn * sizeof(double));
 
-    // Create Vh array (transpose back to row-major)
+    // Create Vh array (transpose back to row-major): minmn x n
     Napi::Array vhShape = Napi::Array::New(env, 2);
-    vhShape.Set(uint32_t(0), Napi::Number::New(env, n));
+    vhShape.Set(uint32_t(0), Napi::Number::New(env, minmn));
     vhShape.Set(uint32_t(1), Napi::Number::New(env, n));
-    Napi::Object vhResult = NativeNDArray::constructor.New({vhShape, Napi::String::New(env, "float64")});
+    Napi::Object vhResult = NativeNDArray::constructor.New({vhShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)});
     NativeNDArray* vhArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(vhResult);
-    transposeBack(vt.data(), static_cast<double*>(vhArr->data()), n, n);
+    transposeBack(vt.data(), static_cast<double*>(vhArr->data()), n, minmn);
 
     // Return object with u, s, vh
     Napi::Object result = Napi::Object::New(env);
@@ -999,6 +1015,367 @@ Napi::Value MatrixRank(const Napi::CallbackInfo& info) {
 #endif
 }
 
+// Least squares solution: min ||b - A*x||
+// This is much faster than computing (A'A)^-1 * A'b manually
+Napi::Value Lstsq(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected two arrays (A, b)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    if (a->ndim() != 2) {
+        Napi::Error::New(env, "A must be 2D").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int m = static_cast<int>(a->shape()[0]);  // rows
+    int n = static_cast<int>(a->shape()[1]);  // cols
+    int nrhs = 1;  // number of right-hand sides
+
+    // b can be 1D (m,) or 2D (m, nrhs)
+    if (b->ndim() == 2) {
+        nrhs = static_cast<int>(b->shape()[1]);
+        if (static_cast<int>(b->shape()[0]) != m) {
+            Napi::Error::New(env, "A and b have incompatible shapes").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+    } else if (b->ndim() == 1) {
+        if (static_cast<int>(b->size()) != m) {
+            Napi::Error::New(env, "A and b have incompatible shapes").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+    } else {
+        Napi::Error::New(env, "b must be 1D or 2D").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+#if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
+    // Copy A to column-major and b to work array
+    // dgels overwrites both A and b
+    std::vector<double> aCopy(m * n);
+    transpose(static_cast<double*>(a->data()), aCopy.data(), m, n);
+
+    // b needs to be max(m, n) x nrhs for dgels
+    int ldb = std::max(m, n);
+    std::vector<double> bCopy(ldb * nrhs, 0.0);
+
+    // Copy b (transpose if 2D)
+    double* bData = static_cast<double*>(b->data());
+    if (b->ndim() == 2) {
+        // Transpose b to column-major
+        for (int i = 0; i < m; i++) {
+            for (int j = 0; j < nrhs; j++) {
+                bCopy[j * ldb + i] = bData[i * nrhs + j];
+            }
+        }
+    } else {
+        // 1D: just copy
+        std::memcpy(bCopy.data(), bData, m * sizeof(double));
+    }
+
+    // Query workspace size
+    char trans = 'N';  // No transpose (solve A*x = b)
+    int lapackInfo = 0;
+    double workQuery;
+    int lwork = -1;
+
+    dgels_(&trans, &m, &n, &nrhs, aCopy.data(), &m, bCopy.data(), &ldb,
+           &workQuery, &lwork, &lapackInfo);
+
+    lwork = static_cast<int>(workQuery);
+    std::vector<double> work(lwork);
+
+    // Solve least squares
+    dgels_(&trans, &m, &n, &nrhs, aCopy.data(), &m, bCopy.data(), &ldb,
+           work.data(), &lwork, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        Napi::Error::New(env, "Least squares computation failed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create result array - solution x has shape (n,) or (n, nrhs)
+    // The solution is in the first n rows of bCopy
+    if (nrhs == 1) {
+        Napi::Array xShape = Napi::Array::New(env, 1);
+        xShape.Set(uint32_t(0), Napi::Number::New(env, n));
+        Napi::Object xResult = NativeNDArray::constructor.New({
+            xShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* xArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(xResult);
+        std::memcpy(xArr->data(), bCopy.data(), n * sizeof(double));
+        return xResult;
+    } else {
+        Napi::Array xShape = Napi::Array::New(env, 2);
+        xShape.Set(uint32_t(0), Napi::Number::New(env, n));
+        xShape.Set(uint32_t(1), Napi::Number::New(env, nrhs));
+        Napi::Object xResult = NativeNDArray::constructor.New({
+            xShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* xArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(xResult);
+        double* xData = static_cast<double*>(xArr->data());
+        // Transpose back to row-major
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < nrhs; j++) {
+                xData[i * nrhs + j] = bCopy[j * ldb + i];
+            }
+        }
+        return xResult;
+    }
+#else
+    Napi::Error::New(env, "lstsq requires LAPACK").ThrowAsJavaScriptException();
+    return env.Undefined();
+#endif
+}
+
+/**
+ * Solve normal equations: beta = (X'X)^(-1) X'y
+ * Fuses X'X, X'y, and solve into a single native call.
+ * Uses dsyrk for efficient X'X computation.
+ */
+Napi::Value NormalEquations(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected X and y").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* X = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* y = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    if (X->ndim() != 2) {
+        Napi::Error::New(env, "X must be 2D").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int m = static_cast<int>(X->shape()[0]);  // Number of samples
+    int n = static_cast<int>(X->shape()[1]);  // Number of features
+    int nrhs = 1;
+    bool y_is_2d = (y->ndim() == 2);
+
+    if (y_is_2d) {
+        if (y->shape()[0] != static_cast<size_t>(m)) {
+            Napi::Error::New(env, "y must have same number of rows as X").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+        nrhs = static_cast<int>(y->shape()[1]);
+    } else if (y->ndim() == 1) {
+        if (y->size() != static_cast<size_t>(m)) {
+            Napi::Error::New(env, "y must have same length as X rows").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+    }
+
+    double* dataX = static_cast<double*>(X->data());
+    double* dataY = static_cast<double*>(y->data());
+
+#if defined(USE_ACCELERATE)
+    // Step 1: Compute X'X using dsyrk (symmetric rank-k update)
+    // X'X where X is m x n, result is n x n
+    std::vector<double> XtX(n * n, 0.0);
+
+    // cblas_dsyrk computes C = alpha * A' * A + beta * C (when CblasTrans)
+    // For row-major: A is m x n, we want A' * A which is n x n
+    cblas_dsyrk(CblasRowMajor, CblasUpper, CblasTrans,
+                n, m,           // n = result size, k = inner dimension (m rows of X)
+                1.0, dataX, n,  // A = X, lda = n (number of columns)
+                0.0, XtX.data(), n);  // C = XtX, ldc = n
+
+    // Fill lower triangle (dsyrk only fills upper)
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < i; j++) {
+            XtX[i * n + j] = XtX[j * n + i];
+        }
+    }
+
+    // Step 2: Compute X'y using dgemv
+    // X'y where X is m x n and y is m x nrhs, result is n x nrhs
+    std::vector<double> Xty(n * nrhs, 0.0);
+
+    if (nrhs == 1) {
+        // Vector case: use dgemv
+        cblas_dgemv(CblasRowMajor, CblasTrans, m, n,
+                    1.0, dataX, n, dataY, 1,
+                    0.0, Xty.data(), 1);
+    } else {
+        // Matrix case: use dgemm
+        cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                    n, nrhs, m,
+                    1.0, dataX, n, dataY, nrhs,
+                    0.0, Xty.data(), nrhs);
+    }
+
+    // Step 3: Solve (X'X) * beta = X'y using dposv (symmetric positive definite solver)
+    // dposv modifies both XtX and Xty in place
+    // Convert to column-major for LAPACK
+    std::vector<double> XtX_colmaj(n * n);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            XtX_colmaj[j * n + i] = XtX[i * n + j];
+        }
+    }
+
+    std::vector<double> Xty_colmaj(n * nrhs);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < nrhs; j++) {
+            Xty_colmaj[j * n + i] = Xty[i * nrhs + j];
+        }
+    }
+
+    char uplo = 'U';
+    int lapackInfo = 0;
+    dposv_(&uplo, &n, &nrhs, XtX_colmaj.data(), &n, Xty_colmaj.data(), &n, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        // Fall back to general solver if positive definite solver fails
+        // Recompute XtX and Xty since dposv modified them
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                XtX_colmaj[j * n + i] = XtX[i * n + j];
+            }
+        }
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < nrhs; j++) {
+                Xty_colmaj[j * n + i] = Xty[i * nrhs + j];
+            }
+        }
+
+        std::vector<int> ipiv(n);
+        dgesv_(&n, &nrhs, XtX_colmaj.data(), &n, ipiv.data(), Xty_colmaj.data(), &n, &lapackInfo);
+
+        if (lapackInfo != 0) {
+            Napi::Error::New(env, "Normal equations solve failed").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+    }
+
+    // Create result array - match y's dimensionality
+    if (nrhs == 1 && !y_is_2d) {
+        // y was 1D, return 1D result
+        Napi::Array shape = Napi::Array::New(env, 1);
+        shape.Set(uint32_t(0), Napi::Number::New(env, n));
+        Napi::Object result = NativeNDArray::constructor.New({
+            shape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* beta = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        std::memcpy(beta->data(), Xty_colmaj.data(), n * sizeof(double));
+        return result;
+    } else {
+        // y was 2D, return 2D result (n x nrhs)
+        Napi::Array shape = Napi::Array::New(env, 2);
+        shape.Set(uint32_t(0), Napi::Number::New(env, n));
+        shape.Set(uint32_t(1), Napi::Number::New(env, nrhs));
+        Napi::Object result = NativeNDArray::constructor.New({
+            shape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* beta = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* betaData = static_cast<double*>(beta->data());
+        // Transpose back to row-major
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < nrhs; j++) {
+                betaData[i * nrhs + j] = Xty_colmaj[j * n + i];
+            }
+        }
+        return result;
+    }
+#elif defined(USE_OPENBLAS)
+    // Step 1: Compute X'X using dsyrk
+    std::vector<double> XtX(n * n, 0.0);
+
+    // For Fortran dsyrk with row-major data:
+    // We have X in row-major (m x n), need X' * X
+    // Treat X as column-major n x m matrix, then X * X' gives n x n result
+    char uplo = 'U';
+    char trans = 'N';  // 'N' means A * A' for column-major input
+    double alpha = 1.0, beta_val = 0.0;
+    dsyrk_(&uplo, &trans, &n, &m, &alpha, dataX, &n, &beta_val, XtX.data(), &n);
+
+    // Fill lower triangle
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < i; j++) {
+            XtX[i * n + j] = XtX[j * n + i];
+        }
+    }
+
+    // Step 2: Compute X'y using dgemv/dgemm
+    std::vector<double> Xty(n * nrhs, 0.0);
+
+    if (nrhs == 1) {
+        // X' * y where X is m x n (stored row-major), y is m x 1
+        // For Fortran dgemv with row-major X: treat as n x m column-major
+        // Then 'N' gives (n x m) * (m x 1) = n x 1 which is X' * y
+        char transv = 'N';
+        int inc = 1;
+        dgemv_(&transv, &n, &m, &alpha, dataX, &n, dataY, &inc, &beta_val, Xty.data(), &inc);
+    } else {
+        // Matrix case
+        char transA = 'N', transB = 'N';
+        dgemm_(&transB, &transA, &nrhs, &n, &m, &alpha, dataY, &nrhs, dataX, &n, &beta_val, Xty.data(), &nrhs);
+    }
+
+    // Step 3: Solve (X'X) * beta = X'y
+    int lapackInfo = 0;
+    dposv_(&uplo, &n, &nrhs, XtX.data(), &n, Xty.data(), &n, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        // Fallback: recompute and use general solver
+        std::fill(XtX.begin(), XtX.end(), 0.0);
+        dsyrk_(&uplo, &trans, &n, &m, &alpha, dataX, &n, &beta_val, XtX.data(), &n);
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < i; j++) {
+                XtX[i * n + j] = XtX[j * n + i];
+            }
+        }
+        std::fill(Xty.begin(), Xty.end(), 0.0);
+        if (nrhs == 1) {
+            char transv = 'N';
+            int inc = 1;
+            dgemv_(&transv, &n, &m, &alpha, dataX, &n, dataY, &inc, &beta_val, Xty.data(), &inc);
+        }
+
+        std::vector<int> ipiv(n);
+        dgesv_(&n, &nrhs, XtX.data(), &n, ipiv.data(), Xty.data(), &n, &lapackInfo);
+        if (lapackInfo != 0) {
+            Napi::Error::New(env, "Normal equations solve failed").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+    }
+
+    // Create result - match y's dimensionality
+    if (nrhs == 1 && !y_is_2d) {
+        // y was 1D, return 1D result
+        Napi::Array shape = Napi::Array::New(env, 1);
+        shape.Set(uint32_t(0), Napi::Number::New(env, n));
+        Napi::Object result = NativeNDArray::constructor.New({
+            shape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* betaArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        std::memcpy(betaArr->data(), Xty.data(), n * sizeof(double));
+        return result;
+    } else {
+        // y was 2D, return 2D result (n x nrhs)
+        Napi::Array shape = Napi::Array::New(env, 2);
+        shape.Set(uint32_t(0), Napi::Number::New(env, n));
+        shape.Set(uint32_t(1), Napi::Number::New(env, nrhs));
+        Napi::Object result = NativeNDArray::constructor.New({
+            shape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* betaArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        std::memcpy(betaArr->data(), Xty.data(), n * nrhs * sizeof(double));
+        return result;
+    }
+#else
+    Napi::Error::New(env, "normal_equations requires BLAS/LAPACK").ThrowAsJavaScriptException();
+    return env.Undefined();
+#endif
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Napi::Object linalg = Napi::Object::New(env);
 
@@ -1015,6 +1392,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     linalg.Set("norm", Napi::Function::New(env, Norm));
     linalg.Set("matrix_rank", Napi::Function::New(env, MatrixRank));
     linalg.Set("trace", Napi::Function::New(env, Trace));
+    linalg.Set("lstsq", Napi::Function::New(env, Lstsq));
+    linalg.Set("normal_equations", Napi::Function::New(env, NormalEquations));
 
     exports.Set("linalg", linalg);
     return exports;

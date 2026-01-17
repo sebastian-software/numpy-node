@@ -197,3 +197,47 @@ export function abs(a: NDArray): NDArray {
 export function negative(a: NDArray): NDArray {
   return multiply(a, -1);
 }
+
+// ============================================================
+// Fused Statistical Operations
+// ============================================================
+
+/**
+ * Z-score normalization: (X - mean) / std
+ * Computes mean, std, and normalizes in a single native call.
+ */
+export function zscore(a: NDArray, axis?: number): NDArray {
+  return new NDArray(math.zscore(a._native, axis));
+}
+
+/**
+ * Correlation coefficient matrix
+ * Computes standardized X'X / (n-1) in a single native call.
+ */
+export function corrcoef(a: NDArray): NDArray {
+  return new NDArray(math.corrcoef(a._native));
+}
+
+/**
+ * Gram matrix: X @ X.T
+ * Uses dsyrk for efficient symmetric matrix computation.
+ */
+export function gram_matrix(a: NDArray): NDArray {
+  return new NDArray(math.gram_matrix(a._native));
+}
+
+/**
+ * Softmax function: exp(x) / sum(exp(x))
+ * Computed in a single native call with numerical stability.
+ */
+export function softmax(a: NDArray): NDArray {
+  return new NDArray(math.softmax(a._native));
+}
+
+/**
+ * Pairwise squared Euclidean distances.
+ * Computes D_ij = ||x_i - x_j||^2 for all pairs of points.
+ */
+export function pdist_sq(a: NDArray): NDArray {
+  return new NDArray(math.pdist_sq(a._native));
+}

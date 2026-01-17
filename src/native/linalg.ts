@@ -118,6 +118,23 @@ export function trace(a: NDArray): number {
 }
 
 /**
+ * Least squares solution: min ||b - A*x||
+ * Much faster than computing (A'A)^-1 * A'b manually.
+ * Uses LAPACK dgels which is optimized for this.
+ */
+export function lstsq(a: NDArray, b: NDArray): NDArray {
+  return new NDArray(linalg.lstsq(a._native, b._native));
+}
+
+/**
+ * Solve normal equations: beta = (X'X)^(-1) X'y
+ * Fused operation that's faster than computing X.T, matmul, and solve separately.
+ */
+export function normal_equations(X: NDArray, y: NDArray): NDArray {
+  return new NDArray(linalg.normal_equations(X._native, y._native));
+}
+
+/**
  * Condition number
  */
 export function cond(a: NDArray): number {
