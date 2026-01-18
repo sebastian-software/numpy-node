@@ -149,6 +149,7 @@ export interface MathModule {
   xtx(x: NativeNDArray): NativeNDArray;
   xty(x: NativeNDArray, y: NativeNDArray): NativeNDArray;
   percentile(a: NativeNDArray, q: number[], axis?: number): NativeNDArray;
+  minmax_scale(a: NativeNDArray, axis?: number): NativeNDArray;
 }
 
 /**

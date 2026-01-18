@@ -60,6 +60,7 @@ export {
   xtx,
   xty,
   percentile,
+  minmax_scale,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)

@@ -276,3 +276,13 @@ export function xty(x: NDArray, y: NDArray): NDArray {
 export function percentile(a: NDArray, q: number[], axis?: number): NDArray {
   return new NDArray(math.percentile(a._native, q, axis));
 }
+
+/**
+ * Min-max scaling: (X - min) / (max - min)
+ * Fused operation that computes min, max, and scales in a single native call.
+ * @param a Input 2D array
+ * @param axis Axis along which to scale (0=columns, 1=rows, default=0)
+ */
+export function minmax_scale(a: NDArray, axis?: number): NDArray {
+  return new NDArray(math.minmax_scale(a._native, axis));
+}

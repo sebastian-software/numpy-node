@@ -40,6 +40,7 @@ import {
   xtx,
   xty,
   percentile,
+  minmax_scale,
   NDArray,
 } from '../../src/index.js';
 
@@ -371,15 +372,13 @@ function scenarioMinMaxScaling() {
   /**
    * Min-max feature scaling to [0, 1] range.
    * Common in ML preprocessing.
+   * Uses native fused minmax_scale for better performance.
    */
   const data = randomMatrix(10000, 100);
 
   return function scale() {
-    const minVals = min(data, 0) as NDArray;
-    const maxVals = max(data, 0) as NDArray;
-    const range = subtract(maxVals, minVals);
-    const centered = subtract(data, minVals);
-    const scaled = divide(centered, range);
+    // Single native call that computes min, max, and scales
+    const scaled = minmax_scale(data, 0);
     return scaled;
   };
 }

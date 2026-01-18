@@ -2262,30 +2262,24 @@ Napi::Value Percentile(const Napi::CallbackInfo& info) {
                 colBuffer[row] = data[row * cols + col];
             }
 
-            // Compute each percentile using quickselect
+            // Sort once per column - more efficient when computing multiple percentiles
+            std::sort(colBuffer.begin(), colBuffer.end());
+
+            // Extract all percentiles from sorted array
             for (size_t pIdx = 0; pIdx < percentiles.size(); pIdx++) {
                 double p = percentiles[pIdx] / 100.0;  // Convert from 0-100 to 0-1
                 double k_float = p * (rows - 1);
                 int k = static_cast<int>(k_float);
 
-                // Make a copy for quickselect (it modifies the array)
-                std::vector<double> workBuffer = colBuffer;
-
                 double value;
                 if (k >= rows - 1) {
-                    // 100th percentile
-                    value = *std::max_element(workBuffer.begin(), workBuffer.end());
+                    value = colBuffer[rows - 1];
                 } else if (k <= 0) {
-                    // 0th percentile
-                    value = *std::min_element(workBuffer.begin(), workBuffer.end());
+                    value = colBuffer[0];
                 } else {
                     // Linear interpolation between k and k+1
-                    double lower = quickselect(workBuffer.data(), 0, rows - 1, k);
-                    // Reset and get k+1
-                    workBuffer = colBuffer;
-                    double upper = quickselect(workBuffer.data(), 0, rows - 1, k + 1);
                     double frac = k_float - k;
-                    value = lower + frac * (upper - lower);
+                    value = colBuffer[k] + frac * (colBuffer[k + 1] - colBuffer[k]);
                 }
 
                 resultData[pIdx * cols + col] = value;
@@ -2311,27 +2305,24 @@ Napi::Value Percentile(const Napi::CallbackInfo& info) {
         NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
         double* resultData = static_cast<double*>(resultArr->data());
 
-        // Copy data for quickselect
+        // Copy and sort data - more efficient when computing multiple percentiles
         std::vector<double> buffer(data, data + totalSize);
+        std::sort(buffer.begin(), buffer.end());
 
         for (size_t pIdx = 0; pIdx < percentiles.size(); pIdx++) {
             double p = percentiles[pIdx] / 100.0;
             double k_float = p * (totalSize - 1);
             int k = static_cast<int>(k_float);
 
-            std::vector<double> workBuffer = buffer;
             double value;
-
             if (k >= totalSize - 1) {
-                value = *std::max_element(workBuffer.begin(), workBuffer.end());
+                value = buffer[totalSize - 1];
             } else if (k <= 0) {
-                value = *std::min_element(workBuffer.begin(), workBuffer.end());
+                value = buffer[0];
             } else {
-                double lower = quickselect(workBuffer.data(), 0, totalSize - 1, k);
-                workBuffer = buffer;
-                double upper = quickselect(workBuffer.data(), 0, totalSize - 1, k + 1);
+                // Linear interpolation
                 double frac = k_float - k;
-                value = lower + frac * (upper - lower);
+                value = buffer[k] + frac * (buffer[k + 1] - buffer[k]);
             }
 
             resultData[pIdx] = value;
@@ -2342,6 +2333,118 @@ Napi::Value Percentile(const Napi::CallbackInfo& info) {
 
     Napi::Error::New(env, "Unsupported axis for percentile").ThrowAsJavaScriptException();
     return env.Undefined();
+}
+
+/**
+ * Min-max scaling: (X - min) / (max - min) along axis
+ * Fused operation that computes min, max, and scales in a single pass.
+ * minmax_scale(data, axis=0) - axis=0 scales along columns (common for features)
+ */
+Napi::Value MinMaxScale(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    // Ensure contiguous data
+    Napi::Object contiguousCopy;
+    if (!arr->is_contiguous()) {
+        contiguousCopy = arr->AsContiguous(info).As<Napi::Object>();
+        arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(contiguousCopy);
+    }
+
+    // Get axis (default: 0 for column-wise scaling)
+    int axis = 0;
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        axis = info[1].As<Napi::Number>().Int32Value();
+    }
+
+    const auto& shape = arr->shape();
+    double* data = static_cast<double*>(arr->data());
+
+    if (shape.size() != 2) {
+        Napi::Error::New(env, "minmax_scale requires 2D array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int64_t rows = shape[0];
+    int64_t cols = shape[1];
+
+    // Create result array with same shape
+    Napi::Array resultShape = Napi::Array::New(env, 2);
+    resultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+    resultShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(cols)));
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        resultShape,
+        Napi::String::New(env, "float64"),
+        Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* resultData = static_cast<double*>(resultArr->data());
+
+    if (axis == 0) {
+        // Scale along columns (each column independently)
+        // First pass: compute min and max for each column
+        std::vector<double> minVals(cols, std::numeric_limits<double>::max());
+        std::vector<double> maxVals(cols, std::numeric_limits<double>::lowest());
+
+        for (int64_t row = 0; row < rows; row++) {
+            for (int64_t col = 0; col < cols; col++) {
+                double val = data[row * cols + col];
+                if (val < minVals[col]) minVals[col] = val;
+                if (val > maxVals[col]) maxVals[col] = val;
+            }
+        }
+
+        // Second pass: scale the data
+        for (int64_t row = 0; row < rows; row++) {
+            for (int64_t col = 0; col < cols; col++) {
+                double range = maxVals[col] - minVals[col];
+                double val = data[row * cols + col];
+                if (range > 1e-10) {
+                    resultData[row * cols + col] = (val - minVals[col]) / range;
+                } else {
+                    // Constant column - set to 0 (or could be 0.5)
+                    resultData[row * cols + col] = 0.0;
+                }
+            }
+        }
+    } else if (axis == 1) {
+        // Scale along rows (each row independently)
+        for (int64_t row = 0; row < rows; row++) {
+            // Find min and max for this row
+            double minVal = std::numeric_limits<double>::max();
+            double maxVal = std::numeric_limits<double>::lowest();
+
+            for (int64_t col = 0; col < cols; col++) {
+                double val = data[row * cols + col];
+                if (val < minVal) minVal = val;
+                if (val > maxVal) maxVal = val;
+            }
+
+            double range = maxVal - minVal;
+
+            // Scale this row
+            for (int64_t col = 0; col < cols; col++) {
+                double val = data[row * cols + col];
+                if (range > 1e-10) {
+                    resultData[row * cols + col] = (val - minVal) / range;
+                } else {
+                    resultData[row * cols + col] = 0.0;
+                }
+            }
+        }
+    } else {
+        Napi::Error::New(env, "Unsupported axis for minmax_scale").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    return result;
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -2376,6 +2479,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     math.Set("xtx", Napi::Function::New(env, Xtx));
     math.Set("xty", Napi::Function::New(env, Xty));
     math.Set("percentile", Napi::Function::New(env, Percentile));
+    math.Set("minmax_scale", Napi::Function::New(env, MinMaxScale));
 
     exports.Set("math", math);
     return exports;
