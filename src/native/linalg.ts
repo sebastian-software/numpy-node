@@ -15,6 +15,15 @@ export function matmul(a: NDArray, b: NDArray): NDArray {
 }
 
 /**
+ * Matrix multiplication with B transposed: A @ B.T
+ * Avoids explicit transpose for better performance.
+ * Common in attention mechanisms: Q @ K.T
+ */
+export function matmul_nt(a: NDArray, b: NDArray): NDArray {
+  return new NDArray(linalg.matmul_nt(a._native, b._native));
+}
+
+/**
  * Batch matrix multiplication - performs multiple matmuls in a single native call.
  * Reduces N-API overhead for batched operations.
  * @param as Array of 2D matrices (left operands)

@@ -57,16 +57,26 @@ export {
   softmax,
   pdist_sq,
   affine,
+  row_divide,
   xtx,
   xty,
   percentile,
   minmax_scale,
+  kron,
+  outer,
+  matrix_exp,
+  axpby,
+  matvec,
+  norm_sq,
+  jacobi_step,
+  gradient_2d,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)
 export * as linalg from './linalg.js';
 export {
   matmul,
+  matmul_nt,
   batch_matmul,
   dot,
   inv,

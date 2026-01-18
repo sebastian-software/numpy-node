@@ -99,6 +99,7 @@ export interface NativeNDArrayConstructor {
  */
 export interface LinalgModule {
   matmul(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
+  matmul_nt(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
   batch_matmul(as: NativeNDArray[], bs: NativeNDArray[]): NativeNDArray[];
   dot(a: NativeNDArray, b: NativeNDArray): NativeNDArray | number;
   inv(a: NativeNDArray): NativeNDArray;
@@ -146,10 +147,24 @@ export interface MathModule {
   softmax(a: NativeNDArray): NativeNDArray;
   pdist_sq(a: NativeNDArray): NativeNDArray;
   affine(x: NativeNDArray, gamma: NativeNDArray, beta: NativeNDArray): NativeNDArray;
+  row_divide(x: NativeNDArray, scales: NativeNDArray): NativeNDArray;
   xtx(x: NativeNDArray): NativeNDArray;
   xty(x: NativeNDArray, y: NativeNDArray): NativeNDArray;
   percentile(a: NativeNDArray, q: number[], axis?: number): NativeNDArray;
   minmax_scale(a: NativeNDArray, axis?: number): NativeNDArray;
+  kron(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
+  outer(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
+  matrix_exp(a: NativeNDArray, numTerms?: number): NativeNDArray;
+  axpby(alpha: number, x: NativeNDArray, beta?: number, y?: NativeNDArray): NativeNDArray;
+  matvec(A: NativeNDArray, x: NativeNDArray): NativeNDArray;
+  norm_sq(x: NativeNDArray, axis?: number): NativeNDArray | number;
+  jacobi_step(
+    R: NativeNDArray,
+    x: NativeNDArray,
+    b: NativeNDArray,
+    D: NativeNDArray
+  ): NativeNDArray;
+  gradient_2d(f: NativeNDArray, h?: number): { dfdx: NativeNDArray; dfdy: NativeNDArray };
 }
 
 /**

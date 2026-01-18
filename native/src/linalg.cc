@@ -164,6 +164,84 @@ Napi::Value Matmul(const Napi::CallbackInfo& info) {
     return result;
 }
 
+/**
+ * Compute A @ B.T without explicit transpose.
+ * Uses BLAS dgemm with transB='T' for better performance.
+ * Common in attention mechanisms: Q @ K.T
+ */
+Napi::Value MatmulNT(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected two arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* aOrig = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* bOrig = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    if (aOrig->ndim() != 2 || bOrig->ndim() != 2) {
+        Napi::Error::New(env, "matmul_nt requires 2D arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Ensure inputs are contiguous for BLAS
+    Napi::Object aCopy, bCopy;
+    NativeNDArray* a = ensureContiguous(info, aOrig, aCopy);
+    NativeNDArray* b = ensureContiguous(info, bOrig, bCopy);
+
+    // A is m×k, B is n×k (will be transposed to k×n), result is m×n
+    int m = static_cast<int>(a->shape()[0]);
+    int k = static_cast<int>(a->shape()[1]);
+    int n = static_cast<int>(b->shape()[0]);  // B's rows become result columns after transpose
+
+    if (k != static_cast<int>(b->shape()[1])) {
+        Napi::Error::New(env, "Matrix dimensions incompatible: A columns must match B columns").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create result array (m × n)
+    Napi::Array shape = Napi::Array::New(env, 2);
+    shape.Set(uint32_t(0), Napi::Number::New(env, m));
+    shape.Set(uint32_t(1), Napi::Number::New(env, n));
+
+    Napi::Object result = NativeNDArray::constructor.New({shape, Napi::String::New(env, "float64")});
+    NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+
+    double* dataA = static_cast<double*>(a->data());
+    double* dataB = static_cast<double*>(b->data());
+    double* dataC = static_cast<double*>(c->data());
+
+#if defined(USE_ACCELERATE)
+    // Use Accelerate's BLAS with transpose on B
+    // C = A @ B.T where A is m×k, B is n×k
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                m, n, k,
+                1.0, dataA, k,
+                dataB, k,  // B is n×k, leading dim is k
+                0.0, dataC, n);
+#elif defined(USE_OPENBLAS)
+    // Use OpenBLAS - note: FORTRAN column-major order
+    // Row-major C = A @ B.T becomes column-major C.T = B @ A.T
+    char transA = 'N', transB = 'T';
+    double alpha = 1.0, beta = 0.0;
+    dgemm_(&transA, &transB, &n, &m, &k, &alpha, dataB, &k, dataA, &k, &beta, dataC, &n);
+#else
+    // Pure C++ fallback: C[i,j] = sum_l A[i,l] * B[j,l]
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            double sum = 0.0;
+            for (int l = 0; l < k; l++) {
+                sum += dataA[i * k + l] * dataB[j * k + l];
+            }
+            dataC[i * n + j] = sum;
+        }
+    }
+#endif
+
+    return result;
+}
+
 Napi::Value Dot(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -1543,6 +1621,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Napi::Object linalg = Napi::Object::New(env);
 
     linalg.Set("matmul", Napi::Function::New(env, Matmul));
+    linalg.Set("matmul_nt", Napi::Function::New(env, MatmulNT));
     linalg.Set("batch_matmul", Napi::Function::New(env, BatchMatmul));
     linalg.Set("dot", Napi::Function::New(env, Dot));
     linalg.Set("det", Napi::Function::New(env, Det));
