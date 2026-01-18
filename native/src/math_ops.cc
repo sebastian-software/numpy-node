@@ -2161,6 +2161,189 @@ Napi::Value Xty(const Napi::CallbackInfo& info) {
     return result;
 }
 
+/**
+ * Quickselect algorithm - O(n) average case to find k-th smallest element
+ * Modifies the array in-place (partial sort)
+ */
+static double quickselect(double* arr, int left, int right, int k) {
+    while (left < right) {
+        // Choose pivot (median of three for better performance)
+        int mid = left + (right - left) / 2;
+        if (arr[mid] < arr[left]) std::swap(arr[left], arr[mid]);
+        if (arr[right] < arr[left]) std::swap(arr[left], arr[right]);
+        if (arr[mid] < arr[right]) std::swap(arr[mid], arr[right]);
+        double pivot = arr[right];
+
+        // Partition
+        int i = left;
+        for (int j = left; j < right; j++) {
+            if (arr[j] <= pivot) {
+                std::swap(arr[i], arr[j]);
+                i++;
+            }
+        }
+        std::swap(arr[i], arr[right]);
+
+        // Recurse on the side containing k
+        if (k == i) {
+            return arr[k];
+        } else if (k < i) {
+            right = i - 1;
+        } else {
+            left = i + 1;
+        }
+    }
+    return arr[left];
+}
+
+/**
+ * Percentile function using quickselect - O(n) per percentile
+ * percentile(data, q, axis) - q is array of percentiles [0-100]
+ */
+Napi::Value Percentile(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected array and percentiles").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    // Ensure contiguous data for correct indexing
+    Napi::Object contiguousCopy;
+    if (!arr->is_contiguous()) {
+        contiguousCopy = arr->AsContiguous(info).As<Napi::Object>();
+        arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(contiguousCopy);
+    }
+
+    // Get percentiles array
+    Napi::Array qArr = info[1].As<Napi::Array>();
+    std::vector<double> percentiles(qArr.Length());
+    for (size_t i = 0; i < qArr.Length(); i++) {
+        percentiles[i] = qArr.Get(i).As<Napi::Number>().DoubleValue();
+    }
+
+    // Get axis (default: flatten and compute global percentiles)
+    int axis = -1;
+    if (info.Length() >= 3 && !info[2].IsUndefined()) {
+        axis = info[2].As<Napi::Number>().Int32Value();
+    }
+
+    const auto& shape = arr->shape();
+    double* data = static_cast<double*>(arr->data());
+    int64_t totalSize = arr->size();
+
+    // For now, implement axis=0 case (percentiles along columns) which is the benchmark case
+    if (axis == 0 && shape.size() == 2) {
+        int64_t rows = shape[0];
+        int64_t cols = shape[1];
+        int64_t numPercentiles = static_cast<int64_t>(percentiles.size());
+
+        // Result shape: [numPercentiles, cols]
+        Napi::Array resultShape = Napi::Array::New(env, 2);
+        resultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(numPercentiles)));
+        resultShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(cols)));
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            resultShape,
+            Napi::String::New(env, "float64"),
+            Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* resultData = static_cast<double*>(resultArr->data());
+
+        // Work buffer for each column
+        std::vector<double> colBuffer(rows);
+
+        for (int64_t col = 0; col < cols; col++) {
+            // Extract column into buffer
+            for (int64_t row = 0; row < rows; row++) {
+                colBuffer[row] = data[row * cols + col];
+            }
+
+            // Compute each percentile using quickselect
+            for (size_t pIdx = 0; pIdx < percentiles.size(); pIdx++) {
+                double p = percentiles[pIdx] / 100.0;  // Convert from 0-100 to 0-1
+                double k_float = p * (rows - 1);
+                int k = static_cast<int>(k_float);
+
+                // Make a copy for quickselect (it modifies the array)
+                std::vector<double> workBuffer = colBuffer;
+
+                double value;
+                if (k >= rows - 1) {
+                    // 100th percentile
+                    value = *std::max_element(workBuffer.begin(), workBuffer.end());
+                } else if (k <= 0) {
+                    // 0th percentile
+                    value = *std::min_element(workBuffer.begin(), workBuffer.end());
+                } else {
+                    // Linear interpolation between k and k+1
+                    double lower = quickselect(workBuffer.data(), 0, rows - 1, k);
+                    // Reset and get k+1
+                    workBuffer = colBuffer;
+                    double upper = quickselect(workBuffer.data(), 0, rows - 1, k + 1);
+                    double frac = k_float - k;
+                    value = lower + frac * (upper - lower);
+                }
+
+                resultData[pIdx * cols + col] = value;
+            }
+        }
+
+        return result;
+    }
+
+    // Global percentiles (no axis specified or axis=-1)
+    if (axis == -1) {
+        int64_t numPercentiles = static_cast<int64_t>(percentiles.size());
+
+        // Result shape: [numPercentiles]
+        Napi::Array resultShape = Napi::Array::New(env, 1);
+        resultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(numPercentiles)));
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            resultShape,
+            Napi::String::New(env, "float64"),
+            Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* resultData = static_cast<double*>(resultArr->data());
+
+        // Copy data for quickselect
+        std::vector<double> buffer(data, data + totalSize);
+
+        for (size_t pIdx = 0; pIdx < percentiles.size(); pIdx++) {
+            double p = percentiles[pIdx] / 100.0;
+            double k_float = p * (totalSize - 1);
+            int k = static_cast<int>(k_float);
+
+            std::vector<double> workBuffer = buffer;
+            double value;
+
+            if (k >= totalSize - 1) {
+                value = *std::max_element(workBuffer.begin(), workBuffer.end());
+            } else if (k <= 0) {
+                value = *std::min_element(workBuffer.begin(), workBuffer.end());
+            } else {
+                double lower = quickselect(workBuffer.data(), 0, totalSize - 1, k);
+                workBuffer = buffer;
+                double upper = quickselect(workBuffer.data(), 0, totalSize - 1, k + 1);
+                double frac = k_float - k;
+                value = lower + frac * (upper - lower);
+            }
+
+            resultData[pIdx] = value;
+        }
+
+        return result;
+    }
+
+    Napi::Error::New(env, "Unsupported axis for percentile").ThrowAsJavaScriptException();
+    return env.Undefined();
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Napi::Object math = Napi::Object::New(env);
 
@@ -2192,6 +2375,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     math.Set("affine", Napi::Function::New(env, Affine));
     math.Set("xtx", Napi::Function::New(env, Xtx));
     math.Set("xty", Napi::Function::New(env, Xty));
+    math.Set("percentile", Napi::Function::New(env, Percentile));
 
     exports.Set("math", math);
     return exports;

@@ -38,6 +38,7 @@ import {
   affine,
   xtx,
   xty,
+  percentile,
   NDArray,
 } from '../../src/index.js';
 
@@ -800,34 +801,15 @@ function scenarioPercentiles() {
   /**
    * Calculate multiple percentiles.
    * Common in statistical analysis.
+   * Uses native quickselect-based percentile - O(n) per percentile.
    */
   const data = randomMatrix(10000, 50);
-  const percentiles = [0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99];
+  // Percentiles as 0-100 values for native function
+  const pctValues = [10, 25, 50, 75, 90, 95, 99];
 
   return function computePercentiles() {
-    const dataArr = data.data as Float64Array;
-    const cols = 50;
-    const rows = 10000;
-    const results: number[][] = [];
-
-    for (let col = 0; col < cols; col++) {
-      // Extract column
-      const column = new Float64Array(rows);
-      for (let row = 0; row < rows; row++) {
-        column[row] = dataArr[row * cols + col];
-      }
-
-      // Sort
-      column.sort();
-
-      // Get percentiles
-      const colPercentiles = percentiles.map((p) => {
-        const idx = Math.floor(p * (rows - 1));
-        return column[idx];
-      });
-      results.push(colPercentiles);
-    }
-    return results;
+    // Native percentile with axis=0 computes percentiles along columns
+    return percentile(data, pctValues, 0);
   };
 }
 

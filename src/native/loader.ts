@@ -147,6 +147,7 @@ export interface MathModule {
   affine(x: NativeNDArray, gamma: NativeNDArray, beta: NativeNDArray): NativeNDArray;
   xtx(x: NativeNDArray): NativeNDArray;
   xty(x: NativeNDArray, y: NativeNDArray): NativeNDArray;
+  percentile(a: NativeNDArray, q: number[], axis?: number): NativeNDArray;
 }
 
 /**

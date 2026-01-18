@@ -59,6 +59,7 @@ export {
   affine,
   xtx,
   xty,
+  percentile,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)

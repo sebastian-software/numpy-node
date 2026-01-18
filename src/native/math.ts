@@ -266,3 +266,13 @@ export function xtx(x: NDArray): NDArray {
 export function xty(x: NDArray, y: NDArray): NDArray {
   return new NDArray(math.xty(x._native, y._native));
 }
+
+/**
+ * Compute percentiles using quickselect algorithm - O(n) per percentile.
+ * @param a Input array
+ * @param q Array of percentile values (0-100)
+ * @param axis Axis along which to compute percentiles (default: flatten and compute globally)
+ */
+export function percentile(a: NDArray, q: number[], axis?: number): NDArray {
+  return new NDArray(math.percentile(a._native, q, axis));
+}
