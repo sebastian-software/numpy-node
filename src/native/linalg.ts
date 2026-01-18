@@ -15,6 +15,21 @@ export function matmul(a: NDArray, b: NDArray): NDArray {
 }
 
 /**
+ * Batch matrix multiplication - performs multiple matmuls in a single native call.
+ * Reduces N-API overhead for batched operations.
+ * @param as Array of 2D matrices (left operands)
+ * @param bs Array of 2D matrices (right operands)
+ * @returns Array of result matrices
+ */
+export function batch_matmul(as: NDArray[], bs: NDArray[]): NDArray[] {
+  const nativeResults = linalg.batch_matmul(
+    as.map((a) => a._native),
+    bs.map((b) => b._native)
+  );
+  return nativeResults.map((r) => new NDArray(r));
+}
+
+/**
  * Dot product / matrix multiplication
  */
 export function dot(a: NDArray, b: NDArray): NDArray | number {

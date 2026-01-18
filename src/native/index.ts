@@ -66,6 +66,7 @@ export {
 export * as linalg from './linalg.js';
 export {
   matmul,
+  batch_matmul,
   dot,
   inv,
   det,

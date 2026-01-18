@@ -1398,10 +1398,152 @@ Napi::Value NormalEquations(const Napi::CallbackInfo& info) {
 #endif
 }
 
+/**
+ * Batch matrix multiplication - reduces N-API overhead by doing multiple
+ * matmuls in a single native call.
+ * batch_matmul(As, Bs) where As and Bs are arrays of 2D matrices
+ * Returns array of result matrices
+ */
+Napi::Value BatchMatmul(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected two arrays of matrices").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    if (!info[0].IsArray() || !info[1].IsArray()) {
+        Napi::TypeError::New(env, "Arguments must be arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Array asArray = info[0].As<Napi::Array>();
+    Napi::Array bsArray = info[1].As<Napi::Array>();
+
+    uint32_t batchSize = asArray.Length();
+    if (batchSize != bsArray.Length()) {
+        Napi::Error::New(env, "Arrays must have same length").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    if (batchSize == 0) {
+        return Napi::Array::New(env, 0);
+    }
+
+    Napi::Array results = Napi::Array::New(env, batchSize);
+
+#if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
+    for (uint32_t i = 0; i < batchSize; i++) {
+        NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(asArray.Get(i).As<Napi::Object>());
+        NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(bsArray.Get(i).As<Napi::Object>());
+
+        // Ensure contiguous
+        Napi::Object aCopy, bCopy;
+        a = ensureContiguous(info, a, aCopy);
+        b = ensureContiguous(info, b, bCopy);
+
+        if (a->ndim() != 2 || b->ndim() != 2) {
+            Napi::Error::New(env, "All matrices must be 2D").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        int64_t m = a->shape()[0];
+        int64_t ka = a->shape()[1];
+        int64_t kb = b->shape()[0];
+        int64_t n = b->shape()[1];
+
+        if (ka != kb) {
+            Napi::Error::New(env, "Matrix dimensions incompatible for multiplication").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        int64_t k = ka;
+
+        // Create result matrix
+        Napi::Array cShape = Napi::Array::New(env, 2);
+        cShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(m)));
+        cShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(n)));
+        Napi::Object cResult = NativeNDArray::constructor.New({
+            cShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(cResult);
+
+        double* aData = static_cast<double*>(a->data());
+        double* bData = static_cast<double*>(b->data());
+        double* cData = static_cast<double*>(c->data());
+
+        // Perform matmul using BLAS
+#if defined(USE_ACCELERATE)
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    static_cast<int>(m), static_cast<int>(n), static_cast<int>(k),
+                    1.0, aData, static_cast<int>(k),
+                    bData, static_cast<int>(n),
+                    0.0, cData, static_cast<int>(n));
+#elif defined(USE_OPENBLAS)
+        // For OpenBLAS with Fortran interface, we need to account for row-major storage
+        // C = A * B in row-major is equivalent to C' = B' * A' in column-major
+        // So we compute C' = B' * A' and the result is C in row-major
+        char transA = 'N', transB = 'N';
+        double alpha = 1.0, beta = 0.0;
+        int mi = static_cast<int>(m);
+        int ni = static_cast<int>(n);
+        int ki = static_cast<int>(k);
+        // dgemm expects column-major, but our data is row-major
+        // C(m,n) = A(m,k) * B(k,n) row-major
+        // Equivalent to C'(n,m) = B'(n,k) * A'(k,m) column-major
+        // We swap A and B and swap m and n
+        dgemm_(&transA, &transB, &ni, &mi, &ki,
+               &alpha, bData, &ni, aData, &ki,
+               &beta, cData, &ni);
+#endif
+
+        results.Set(i, cResult);
+    }
+#else
+    // Pure fallback: use regular loop
+    for (uint32_t i = 0; i < batchSize; i++) {
+        NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(asArray.Get(i).As<Napi::Object>());
+        NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(bsArray.Get(i).As<Napi::Object>());
+
+        int64_t m = a->shape()[0];
+        int64_t k = a->shape()[1];
+        int64_t n = b->shape()[1];
+
+        Napi::Array cShape = Napi::Array::New(env, 2);
+        cShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(m)));
+        cShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(n)));
+        Napi::Object cResult = NativeNDArray::constructor.New({
+            cShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(cResult);
+
+        double* aData = static_cast<double*>(a->data());
+        double* bData = static_cast<double*>(b->data());
+        double* cData = static_cast<double*>(c->data());
+
+        // Naive matmul
+        for (int64_t row = 0; row < m; row++) {
+            for (int64_t col = 0; col < n; col++) {
+                double sum = 0.0;
+                for (int64_t inner = 0; inner < k; inner++) {
+                    sum += aData[row * k + inner] * bData[inner * n + col];
+                }
+                cData[row * n + col] = sum;
+            }
+        }
+
+        results.Set(i, cResult);
+    }
+#endif
+
+    return results;
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Napi::Object linalg = Napi::Object::New(env);
 
     linalg.Set("matmul", Napi::Function::New(env, Matmul));
+    linalg.Set("batch_matmul", Napi::Function::New(env, BatchMatmul));
     linalg.Set("dot", Napi::Function::New(env, Dot));
     linalg.Set("det", Napi::Function::New(env, Det));
     linalg.Set("inv", Napi::Function::New(env, Inv));

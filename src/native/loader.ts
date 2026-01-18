@@ -99,6 +99,7 @@ export interface NativeNDArrayConstructor {
  */
 export interface LinalgModule {
   matmul(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
+  batch_matmul(as: NativeNDArray[], bs: NativeNDArray[]): NativeNDArray[];
   dot(a: NativeNDArray, b: NativeNDArray): NativeNDArray | number;
   inv(a: NativeNDArray): NativeNDArray;
   det(a: NativeNDArray): number;

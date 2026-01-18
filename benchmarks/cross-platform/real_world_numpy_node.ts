@@ -13,6 +13,7 @@ import {
   multiply,
   divide,
   matmul,
+  batch_matmul,
   dot,
   sqrt,
   exp,
@@ -721,6 +722,7 @@ function scenarioBatchMatmul() {
   /**
    * Batch matrix multiplication - multiple small matrices.
    * Common in attention mechanisms.
+   * Uses native batch_matmul to reduce N-API overhead.
    */
   // 32 matrices of 64x64
   const batchSize = 32;
@@ -732,11 +734,8 @@ function scenarioBatchMatmul() {
   }
 
   return function batchMM() {
-    const results: NDArray[] = [];
-    for (let i = 0; i < batchSize; i++) {
-      results.push(matmul(As[i], Bs[i]));
-    }
-    return results;
+    // Single native call for all 32 matmuls
+    return batch_matmul(As, Bs);
   };
 }
 
