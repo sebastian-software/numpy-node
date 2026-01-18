@@ -660,7 +660,8 @@ function scenarioPortfolioVariance() {
     // Compute covariance matrix
     const μ = mean(returns, 0) as NDArray;
     const centered = subtract(returns, μ);
-    const cov = divide(matmul(centered.T, centered), 999);
+    // Use xtx for efficient X.T @ X (avoids transpose copy)
+    const cov = divide(xtx(centered), 999);
 
     // Portfolio variance: w' @ Cov @ w
     const wCol = weights.reshape([50, 1]);

@@ -3,12 +3,41 @@
 #include <cstring>
 #include <stdexcept>
 #include <numeric>
+#include <algorithm>
 
 #if defined(USE_ACCELERATE)
     #include <Accelerate/Accelerate.h>
 #endif
 
 namespace numpy_node {
+
+// ============================================================
+// DataBuffer Implementation
+// ============================================================
+
+DataBuffer::DataBuffer(size_t byte_size)
+    : data_(nullptr), byte_size_(byte_size), owns_data_(true) {
+    if (byte_size > 0) {
+        data_ = std::calloc(1, byte_size);
+        if (!data_) {
+            throw std::bad_alloc();
+        }
+    }
+}
+
+DataBuffer::DataBuffer(void* external_data, size_t byte_size, bool owns)
+    : data_(external_data), byte_size_(byte_size), owns_data_(owns) {}
+
+DataBuffer::~DataBuffer() {
+    if (owns_data_ && data_) {
+        std::free(data_);
+        data_ = nullptr;
+    }
+}
+
+// ============================================================
+// NativeNDArray Implementation
+// ============================================================
 
 Napi::FunctionReference NativeNDArray::constructor;
 
@@ -74,6 +103,8 @@ Napi::Object NativeNDArray::Init(Napi::Env env, Napi::Object exports) {
         InstanceAccessor<&NativeNDArray::GetNdim>("ndim"),
         InstanceAccessor<&NativeNDArray::GetSize>("size"),
         InstanceAccessor<&NativeNDArray::GetData>("data"),
+        InstanceAccessor<&NativeNDArray::GetIsContiguous>("isContiguous"),
+        InstanceAccessor<&NativeNDArray::GetIsView>("isView"),
         InstanceMethod<&NativeNDArray::Copy>("copy"),
         InstanceMethod<&NativeNDArray::Reshape>("reshape"),
         InstanceMethod<&NativeNDArray::Transpose>("transpose"),
@@ -99,12 +130,52 @@ Napi::Object NativeNDArray::Init(Napi::Env env, Napi::Object exports) {
     return exports;
 }
 
+Napi::Object NativeNDArray::NewView(Napi::Env env,
+                                    std::shared_ptr<DataBuffer> buffer,
+                                    int64_t offset,
+                                    const std::vector<int64_t>& shape,
+                                    const std::vector<int64_t>& strides,
+                                    DType dtype) {
+    // Create array with minimal allocation (will be replaced)
+    Napi::Array shapeArr = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        shapeArr.Set(i, Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+
+    // Create with "view" marker (4th arg = true means view mode)
+    Napi::Object result = constructor.New({
+        shapeArr,
+        Napi::String::New(env, dtype_to_string(dtype)),
+        Napi::Boolean::New(env, true),   // skipInit
+        Napi::Boolean::New(env, true)    // isView marker
+    });
+
+    NativeNDArray* arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    arr->setViewData(buffer, offset, shape, strides, dtype);
+
+    return result;
+}
+
+void NativeNDArray::setViewData(std::shared_ptr<DataBuffer> buffer,
+                                int64_t offset,
+                                const std::vector<int64_t>& shape,
+                                const std::vector<int64_t>& strides,
+                                DType dtype) {
+    buffer_ = buffer;
+    offset_ = offset;
+    shape_ = shape;
+    strides_ = strides;
+    dtype_ = dtype;
+    is_view_ = true;
+    cached_buffer_.reset();  // Clear cache - views need special handling
+}
+
 NativeNDArray::NativeNDArray(const Napi::CallbackInfo& info)
     : Napi::ObjectWrap<NativeNDArray>(info),
-      data_(nullptr),
+      buffer_(nullptr),
       dtype_(DType::Float64),
-      owns_data_(true),
-      offset_(0) {
+      offset_(0),
+      is_view_(false) {
 
     Napi::Env env = info.Env();
 
@@ -131,8 +202,20 @@ NativeNDArray::NativeNDArray(const Napi::CallbackInfo& info)
     }
     dtype_ = string_to_dtype(info[1].As<Napi::String>().Utf8Value());
 
-    // Compute strides
-    compute_strides();
+    // Check if this is a view creation (4th arg = true)
+    bool isViewCreation = (info.Length() >= 4 && info[3].IsBoolean() && info[3].As<Napi::Boolean>().Value());
+
+    if (isViewCreation) {
+        // View mode: buffer will be set by setViewData()
+        // Create minimal buffer that will be replaced
+        is_view_ = true;
+        buffer_ = std::make_shared<DataBuffer>(0);
+        compute_contiguous_strides();
+        return;
+    }
+
+    // Compute strides for contiguous array
+    compute_contiguous_strides();
 
     // Allocate memory
     int64_t total_size = size();
@@ -141,32 +224,32 @@ NativeNDArray::NativeNDArray(const Napi::CallbackInfo& info)
     // Check if we should skip zero-initialization (3rd argument = skipInit)
     bool skipInit = (info.Length() >= 3 && info[2].IsBoolean() && info[2].As<Napi::Boolean>().Value());
 
-    if (skipInit) {
-        // For ones/full: use malloc (will be overwritten anyway)
-        data_ = std::malloc(byte_size);
-    } else {
-        // For zeros: use calloc for OS-level lazy zeroing optimization
-        data_ = std::calloc(total_size, dtype_size(dtype_));
-    }
-
-    if (!data_) {
+    try {
+        if (skipInit) {
+            // For ones/full: allocate without zeroing
+            void* raw = std::malloc(byte_size);
+            if (!raw) throw std::bad_alloc();
+            buffer_ = std::make_shared<DataBuffer>(raw, byte_size, true);
+        } else {
+            // For zeros: DataBuffer constructor uses calloc
+            buffer_ = std::make_shared<DataBuffer>(byte_size);
+        }
+    } catch (const std::bad_alloc&) {
         Napi::Error::New(env, "Failed to allocate memory").ThrowAsJavaScriptException();
         return;
     }
 }
 
 NativeNDArray::~NativeNDArray() {
-    if (owns_data_ && data_) {
-        std::free(data_);
-        data_ = nullptr;
-    }
+    // shared_ptr handles cleanup automatically
+    buffer_.reset();
 }
 
-void NativeNDArray::compute_strides() {
+void NativeNDArray::compute_contiguous_strides() {
     strides_.resize(shape_.size());
     if (shape_.empty()) return;
 
-    // C-contiguous strides
+    // C-contiguous strides (in bytes)
     strides_[shape_.size() - 1] = dtype_size(dtype_);
     for (int i = static_cast<int>(shape_.size()) - 2; i >= 0; i--) {
         strides_[i] = strides_[i + 1] * shape_[i + 1];
@@ -222,16 +305,21 @@ Napi::Value NativeNDArray::GetSize(const Napi::CallbackInfo& info) {
 Napi::Value NativeNDArray::GetData(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
+    // For non-contiguous views, we need to return a contiguous copy
+    if (!is_contiguous()) {
+        // Create contiguous copy and return its data
+        Napi::Object contiguous = AsContiguous(info).As<Napi::Object>();
+        NativeNDArray* contArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(contiguous);
+        return contArr->GetData(info);
+    }
+
     size_t byte_length = size() * dtype_size(dtype_);
 
-    // Create or reuse cached ArrayBuffer (zero-copy)
-    // The ArrayBuffer directly references our data_ pointer without copying
+    // Create or reuse cached ArrayBuffer (zero-copy for contiguous arrays)
     if (!cached_buffer_) {
-        // Create ArrayBuffer with external data - no copy!
-        // Data lifetime is managed by NativeNDArray, so no finalizer needed
         Napi::ArrayBuffer buffer = Napi::ArrayBuffer::New(
             env,
-            data_,
+            data(),  // Now uses offset-corrected data()
             byte_length
         );
         cached_buffer_ = std::make_unique<Napi::Reference<Napi::ArrayBuffer>>(
@@ -264,6 +352,14 @@ Napi::Value NativeNDArray::GetData(const Napi::CallbackInfo& info) {
     }
 }
 
+Napi::Value NativeNDArray::GetIsContiguous(const Napi::CallbackInfo& info) {
+    return Napi::Boolean::New(info.Env(), is_contiguous());
+}
+
+Napi::Value NativeNDArray::GetIsView(const Napi::CallbackInfo& info) {
+    return Napi::Boolean::New(info.Env(), is_view_);
+}
+
 Napi::Value NativeNDArray::Copy(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -278,7 +374,39 @@ Napi::Value NativeNDArray::Copy(const Napi::CallbackInfo& info) {
     });
 
     NativeNDArray* copy = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    std::memcpy(copy->data_, data_, size() * dtype_size(dtype_));
+
+    // If contiguous, simple memcpy
+    if (is_contiguous()) {
+        std::memcpy(copy->data(), data(), size() * dtype_size(dtype_));
+    } else {
+        // Non-contiguous: copy element by element using strides
+        int64_t totalSize = size();
+        int ndim = static_cast<int>(shape_.size());
+        size_t elemSize = dtype_size(dtype_);
+
+        const char* src = static_cast<const char*>(data());
+        double* dst = static_cast<double*>(copy->data());
+
+        // Iterate over all elements
+        std::vector<int64_t> indices(ndim, 0);
+        for (int64_t i = 0; i < totalSize; i++) {
+            // Calculate source offset using strides
+            int64_t srcOffset = 0;
+            for (int d = 0; d < ndim; d++) {
+                srcOffset += indices[d] * strides_[d];
+            }
+
+            // Copy element
+            dst[i] = *reinterpret_cast<const double*>(src + srcOffset);
+
+            // Increment indices (like a multi-digit counter)
+            for (int d = ndim - 1; d >= 0; d--) {
+                indices[d]++;
+                if (indices[d] < shape_[d]) break;
+                indices[d] = 0;
+            }
+        }
+    }
 
     return result;
 }
@@ -325,98 +453,59 @@ Napi::Value NativeNDArray::Reshape(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    // Create new array with reshaped view
-    Napi::Array shapeArr = Napi::Array::New(env, newShape.size());
-    for (size_t i = 0; i < newShape.size(); i++) {
-        shapeArr.Set(i, Napi::Number::New(env, static_cast<double>(newShape[i])));
+    // If contiguous, we can return a view with new shape
+    if (is_contiguous()) {
+        // Compute new C-contiguous strides for the new shape
+        std::vector<int64_t> newStrides(newShape.size());
+        if (!newShape.empty()) {
+            newStrides[newShape.size() - 1] = dtype_size(dtype_);
+            for (int i = static_cast<int>(newShape.size()) - 2; i >= 0; i--) {
+                newStrides[i] = newStrides[i + 1] * newShape[i + 1];
+            }
+        }
+
+        return NewView(env, buffer_, offset_, newShape, newStrides, dtype_);
     }
 
-    Napi::Object result = constructor.New({
-        shapeArr,
-        Napi::String::New(env, dtype_to_string(dtype_))
-    });
+    // Non-contiguous: need to make a contiguous copy first
+    Napi::Object contiguous = AsContiguous(info).As<Napi::Object>();
+    NativeNDArray* contArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(contiguous);
 
-    NativeNDArray* reshaped = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    std::memcpy(reshaped->data_, data_, size() * dtype_size(dtype_));
+    // Compute new strides for the new shape
+    std::vector<int64_t> newStrides(newShape.size());
+    if (!newShape.empty()) {
+        newStrides[newShape.size() - 1] = dtype_size(dtype_);
+        for (int i = static_cast<int>(newShape.size()) - 2; i >= 0; i--) {
+            newStrides[i] = newStrides[i + 1] * newShape[i + 1];
+        }
+    }
 
-    return result;
+    return NewView(env, contArr->buffer_, contArr->offset_, newShape, newStrides, dtype_);
 }
 
 Napi::Value NativeNDArray::Transpose(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
+    // Transpose is a VIEW operation - just reverse shape and strides!
+    // No data copy needed. This is O(1) instead of O(n).
+
+    // 1D arrays - transpose is identity, return view with same shape/strides
+    if (shape_.size() <= 1) {
+        return NewView(env, buffer_, offset_, shape_, strides_, dtype_);
+    }
+
+    // Reverse shape and strides
     std::vector<int64_t> newShape(shape_.rbegin(), shape_.rend());
+    std::vector<int64_t> newStrides(strides_.rbegin(), strides_.rend());
 
-    Napi::Array shapeArr = Napi::Array::New(env, newShape.size());
-    for (size_t i = 0; i < newShape.size(); i++) {
-        shapeArr.Set(i, Napi::Number::New(env, static_cast<double>(newShape[i])));
-    }
-
-    Napi::Object result = constructor.New({
-        shapeArr,
-        Napi::String::New(env, dtype_to_string(dtype_)),
-        Napi::Boolean::New(env, true)  // skipInit
-    });
-
-    NativeNDArray* transposed = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* srcData = static_cast<double*>(data_);
-    double* dstData = static_cast<double*>(transposed->data_);
-
-    // Fast path for 2D arrays (most common case)
-    if (shape_.size() == 2) {
-        int64_t rows = shape_[0];
-        int64_t cols = shape_[1];
-
-        // Transpose: dst[j, i] = src[i, j]
-        // In row-major: dst[j * rows + i] = src[i * cols + j]
-        // Note: Naive loop is faster than vDSP_mtransD for typical sizes
-        for (int64_t i = 0; i < rows; i++) {
-            for (int64_t j = 0; j < cols; j++) {
-                dstData[j * rows + i] = srcData[i * cols + j];
-            }
-        }
-        return result;
-    }
-
-    // 1D arrays - just copy (transpose is identity)
-    if (shape_.size() == 1) {
-        std::memcpy(dstData, srcData, size() * dtype_size(dtype_));
-        return result;
-    }
-
-    // Generic N-dimensional transpose (reverse all axes)
-    int64_t totalSize = size();
-    int ndim = static_cast<int>(shape_.size());
-    std::vector<int64_t> indices(ndim, 0);
-
-    for (int64_t flatIdx = 0; flatIdx < totalSize; flatIdx++) {
-        // Compute multi-dimensional indices from flat index
-        int64_t temp = flatIdx;
-        for (int i = ndim - 1; i >= 0; i--) {
-            indices[i] = temp % shape_[i];
-            temp /= shape_[i];
-        }
-
-        // Compute transposed flat index (reversed indices)
-        int64_t transposedFlatIdx = 0;
-        int64_t multiplier = 1;
-        for (int i = 0; i < ndim; i++) {
-            transposedFlatIdx += indices[i] * multiplier;
-            multiplier *= newShape[ndim - 1 - i];
-        }
-
-        dstData[transposedFlatIdx] = srcData[flatIdx];
-    }
-
-    return result;
+    // Return a view sharing the same buffer with reversed shape/strides
+    return NewView(env, buffer_, offset_, newShape, newStrides, dtype_);
 }
 
 Napi::Value NativeNDArray::AsContiguous(const Napi::CallbackInfo& info) {
-    if (is_contiguous()) {
-        return Copy(info);
-    }
-    // TODO: Implement proper contiguous copy for non-contiguous arrays
-    return Copy(info);
+    // If already contiguous, just return a copy (or could return self for optimization)
+    // Return a new contiguous array
+    return Copy(info);  // Copy now handles both contiguous and non-contiguous
 }
 
 void NativeNDArray::SetValue(const Napi::CallbackInfo& info) {
@@ -431,34 +520,37 @@ void NativeNDArray::SetValue(const Napi::CallbackInfo& info) {
     Napi::Array jsIndices = info[0].As<Napi::Array>();
     double value = info[1].As<Napi::Number>().DoubleValue();
 
-    // Calculate flat index from indices
-    int64_t flatIndex = 0;
-    size_t elemSize = dtype_size(dtype_);
+    // Calculate byte offset from indices using strides (strides are in bytes)
+    int64_t byteOffset = 0;
     for (uint32_t i = 0; i < jsIndices.Length(); i++) {
         int64_t idx = jsIndices.Get(i).As<Napi::Number>().Int64Value();
-        flatIndex += idx * (strides_[i] / elemSize);
+        byteOffset += idx * strides_[i];
     }
+
+    // Get pointer to element
+    char* basePtr = static_cast<char*>(data());
+    void* elemPtr = basePtr + byteOffset;
 
     // Set value based on dtype
     switch (dtype_) {
         case DType::Float64: {
-            static_cast<double*>(data_)[flatIndex] = value;
+            *static_cast<double*>(elemPtr) = value;
             break;
         }
         case DType::Float32: {
-            static_cast<float*>(data_)[flatIndex] = static_cast<float>(value);
+            *static_cast<float*>(elemPtr) = static_cast<float>(value);
             break;
         }
         case DType::Int32: {
-            static_cast<int32_t*>(data_)[flatIndex] = static_cast<int32_t>(value);
+            *static_cast<int32_t*>(elemPtr) = static_cast<int32_t>(value);
             break;
         }
         case DType::Int64: {
-            static_cast<int64_t*>(data_)[flatIndex] = static_cast<int64_t>(value);
+            *static_cast<int64_t*>(elemPtr) = static_cast<int64_t>(value);
             break;
         }
         default: {
-            static_cast<double*>(data_)[flatIndex] = value;
+            *static_cast<double*>(elemPtr) = value;
             break;
         }
     }
@@ -475,36 +567,62 @@ Napi::Value NativeNDArray::Fill(const Napi::CallbackInfo& info) {
     double value = info[0].As<Napi::Number>().DoubleValue();
     int64_t totalSize = size();
 
-    switch (dtype_) {
-        case DType::Float64: {
-            double* data = static_cast<double*>(data_);
-            for (int64_t i = 0; i < totalSize; i++) {
-                data[i] = value;
+    // For contiguous arrays, use fast path
+    if (is_contiguous()) {
+        switch (dtype_) {
+            case DType::Float64: {
+                double* ptr = static_cast<double*>(data());
+                for (int64_t i = 0; i < totalSize; i++) {
+                    ptr[i] = value;
+                }
+                break;
             }
-            break;
+            case DType::Float32: {
+                float* ptr = static_cast<float*>(data());
+                float fval = static_cast<float>(value);
+                for (int64_t i = 0; i < totalSize; i++) {
+                    ptr[i] = fval;
+                }
+                break;
+            }
+            case DType::Int32: {
+                int32_t* ptr = static_cast<int32_t*>(data());
+                int32_t ival = static_cast<int32_t>(value);
+                for (int64_t i = 0; i < totalSize; i++) {
+                    ptr[i] = ival;
+                }
+                break;
+            }
+            default: {
+                double* ptr = static_cast<double*>(data());
+                for (int64_t i = 0; i < totalSize; i++) {
+                    ptr[i] = value;
+                }
+                break;
+            }
         }
-        case DType::Float32: {
-            float* data = static_cast<float*>(data_);
-            float fval = static_cast<float>(value);
-            for (int64_t i = 0; i < totalSize; i++) {
-                data[i] = fval;
+    } else {
+        // Non-contiguous: iterate using strides
+        int ndim = static_cast<int>(shape_.size());
+        char* basePtr = static_cast<char*>(data());
+        std::vector<int64_t> indices(ndim, 0);
+
+        for (int64_t i = 0; i < totalSize; i++) {
+            // Calculate byte offset
+            int64_t byteOffset = 0;
+            for (int d = 0; d < ndim; d++) {
+                byteOffset += indices[d] * strides_[d];
             }
-            break;
-        }
-        case DType::Int32: {
-            int32_t* data = static_cast<int32_t*>(data_);
-            int32_t ival = static_cast<int32_t>(value);
-            for (int64_t i = 0; i < totalSize; i++) {
-                data[i] = ival;
+
+            // Set value
+            *reinterpret_cast<double*>(basePtr + byteOffset) = value;
+
+            // Increment indices
+            for (int d = ndim - 1; d >= 0; d--) {
+                indices[d]++;
+                if (indices[d] < shape_[d]) break;
+                indices[d] = 0;
             }
-            break;
-        }
-        default: {
-            double* data = static_cast<double*>(data_);
-            for (int64_t i = 0; i < totalSize; i++) {
-                data[i] = value;
-            }
-            break;
         }
     }
 

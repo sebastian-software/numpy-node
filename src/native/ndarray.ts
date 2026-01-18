@@ -227,6 +227,8 @@ export class NDArray {
    * Convert to nested JavaScript array
    */
   toArray(): unknown {
+    // Note: _native.data returns a CONTIGUOUS copy of the data,
+    // so we must use C-contiguous strides to read it, not the view's strides
     const data = this.toTypedArray();
 
     if (this.ndim === 1) {
@@ -237,22 +239,26 @@ export class NDArray {
       return result;
     }
 
-    // Convert byte strides to element strides
-    const elemSize = this.elementSize;
-    const elemStrides = this.strides.map((s) => s / elemSize);
+    // Compute C-contiguous element strides for the returned data
+    // (GetData always returns contiguous data regardless of view strides)
+    const contiguousStrides: number[] = new Array(this.ndim);
+    contiguousStrides[this.ndim - 1] = 1;
+    for (let i = this.ndim - 2; i >= 0; i--) {
+      contiguousStrides[i] = contiguousStrides[i + 1]! * this.shape[i + 1]!;
+    }
 
     const buildArray = (dim: number, offset: number): unknown => {
       if (dim === this.ndim - 1) {
         const result: number[] = [];
         for (let i = 0; i < this.shape[dim]!; i++) {
-          result.push(Number(data[offset + i * elemStrides[dim]!]));
+          result.push(Number(data[offset + i * contiguousStrides[dim]!]));
         }
         return result;
       }
 
       const result: unknown[] = [];
       for (let i = 0; i < this.shape[dim]!; i++) {
-        result.push(buildArray(dim + 1, offset + i * elemStrides[dim]!));
+        result.push(buildArray(dim + 1, offset + i * contiguousStrides[dim]!));
       }
       return result;
     };

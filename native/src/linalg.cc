@@ -76,6 +76,23 @@
 namespace numpy_node {
 namespace linalg {
 
+/**
+ * Helper: ensure array is contiguous, making a copy if needed.
+ * Returns the contiguous array (may be same as input if already contiguous).
+ * If a copy was made, outCopy will hold a reference to prevent deletion.
+ */
+static NativeNDArray* ensureContiguous(const Napi::CallbackInfo& info,
+                                       NativeNDArray* arr,
+                                       Napi::Object& outCopy) {
+    if (arr->is_contiguous()) {
+        return arr;
+    }
+
+    // Make contiguous copy
+    outCopy = arr->AsContiguous(info).As<Napi::Object>();
+    return Napi::ObjectWrap<NativeNDArray>::Unwrap(outCopy);
+}
+
 Napi::Value Matmul(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -84,13 +101,18 @@ Napi::Value Matmul(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+    NativeNDArray* aOrig = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* bOrig = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
 
-    if (a->ndim() != 2 || b->ndim() != 2) {
+    if (aOrig->ndim() != 2 || bOrig->ndim() != 2) {
         Napi::Error::New(env, "matmul requires 2D arrays").ThrowAsJavaScriptException();
         return env.Undefined();
     }
+
+    // Ensure inputs are contiguous for BLAS
+    Napi::Object aCopy, bCopy;
+    NativeNDArray* a = ensureContiguous(info, aOrig, aCopy);
+    NativeNDArray* b = ensureContiguous(info, bOrig, bCopy);
 
     int m = static_cast<int>(a->shape()[0]);
     int k = static_cast<int>(a->shape()[1]);
