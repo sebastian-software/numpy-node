@@ -34,7 +34,7 @@ This means:
 Before merging any new function or modification:
 
 1. **Create NumPy verification test**: Document the exact NumPy command and expected output
-2. **Run verification script**: Use `scripts/verify_numpy_compatibility.py` to generate reference values
+2. **Run verification script**: Use `scripts/generate_numpy_reference.py` to generate reference values
 3. **Include NumPy version in tests**: Document which NumPy version was used for verification
 4. **Test edge cases**: Verify behavior with edge cases matches NumPy
 
@@ -90,4 +90,5 @@ Some differences are acceptable and must be documented:
 - [NumPy Documentation](https://numpy.org/doc/stable/)
 - [NumPy API Reference](https://numpy.org/doc/stable/reference/index.html)
 - [NumPy Source Code](https://github.com/numpy/numpy)
-- `scripts/verify_numpy_compatibility.py` - Local verification script
+- `scripts/generate_numpy_reference.py` - Local verification script for generating NumPy reference values
+- `tests/numpy-conformity.test.ts` - Automated conformity tests run in CI

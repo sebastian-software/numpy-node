@@ -8,13 +8,15 @@ An ADR is a document that captures an important architectural decision made alon
 
 ## Index
 
-| ADR                                     | Title                                  | Status   |
-| --------------------------------------- | -------------------------------------- | -------- |
-| [0000](0000-template.md)                | ADR Template                           | -        |
-| [0001](0001-native-cpp-backend.md)      | Use Native C++ Backend with N-API      | Accepted |
-| [0002](0002-blas-lapack-backend.md)     | Platform-Specific BLAS/LAPACK Backends | Accepted |
-| [0003](0003-row-major-memory-layout.md) | Row-Major Memory Layout                | Accepted |
-| [0004](0004-cpu-based-computation.md)   | CPU-Based Computation (No GPU)         | Accepted |
+| ADR                                           | Title                                  | Status   |
+| --------------------------------------------- | -------------------------------------- | -------- |
+| [0000](0000-template.md)                      | ADR Template                           | -        |
+| [0001](0001-native-cpp-backend.md)            | Use Native C++ Backend with N-API      | Accepted |
+| [0002](0002-blas-lapack-backend.md)           | Platform-Specific BLAS/LAPACK Backends | Accepted |
+| [0003](0003-row-major-memory-layout.md)       | Row-Major Memory Layout                | Accepted |
+| [0004](0004-cpu-based-computation.md)         | CPU-Based Computation (No GPU)         | Accepted |
+| [0005](0005-numpy-compatibility-policy.md)    | NumPy Compatibility Policy             | Accepted |
+| [0006](0006-platform-package-distribution.md) | Platform-Specific Package Distribution | Accepted |
 
 ## Creating a New ADR
 
