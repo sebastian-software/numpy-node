@@ -11,66 +11,64 @@ These benchmarks represent actual use cases rather than isolated method calls.
 
 | Scenario                                   | NumPy    | numpy-node | Speedup            |
 | ------------------------------------------ | -------- | ---------- | ------------------ |
-| Data Normalization (10k x 100)             | 2.17ms   | 1.33ms     | **1.63x faster**   |
-| Linear Regression (5k x 50)                | 170.0µs  | 161.9µs    | ~1.05x             |
-| PCA via SVD (2k x 100 -> 10)               | 10.36ms  | 13.16ms    | 1.27x slower       |
-| Correlation Matrix (5k x 50)               | 941.7µs  | 781.1µs    | **1.21x faster**   |
-| Neural Net Forward (1k x 256->128->64->10) | 404.9µs  | 427.8µs    | ~1.06x             |
-| Covariance + Eigendecomp (3k x 80)         | 4.12ms   | 3.15ms     | **1.31x faster**   |
-| Least Squares QR (8k x 100)                | 34.27ms  | 39.55ms    | ~1.15x             |
-| Batch Statistics (100 x 1k x 20)           | 7.39ms   | 2.09ms     | **3.53x faster**   |
-| Pairwise Distances (1k x 50)               | 2.64ms   | 1.66ms     | **1.59x faster**   |
-| Polynomial Fit (1k points, deg 10)         | 147.2µs  | 11.7µs     | **12.61x faster**  |
-| Min-Max Scaling (10k x 100)                | 1.51ms   | 1.70ms     | ~1.12x             |
-| Outer Product Sum (1k x 100)               | 53.5µs   | 57.8µs     | ~1.08x             |
-| Weighted Mean (5k x 200)                   | 195.5µs  | 208.7µs    | ~1.07x             |
-| Gradient Descent Step (10k x 50)           | 222.8µs  | 245.2µs    | ~1.10x             |
-| Cross-Entropy Loss (1k x 10)               | 43.1µs   | 46.1µs     | ~1.07x             |
-| Cosine Similarity (500 x 128)              | 672.1µs  | 508.4µs    | **1.32x faster**   |
-| K-Means Step (5k x 20, k=10)               | 166.3µs  | 120.2µs    | **1.38x faster**   |
-| Image Filter (256 x 256)                   | 55.0µs   | 53.8µs     | ~1.02x             |
-| Power Iteration (200 x 200)                | 69.0µs   | 76.4µs     | ~1.11x             |
-| Rolling Std (10k, window=50)               | 6.43ms   | 6.12ms     | ~1.05x             |
-| Log Returns (5k x 100)                     | 2.91ms   | 2.20ms     | **1.33x faster**   |
-| Sharpe Ratio (1k x 50)                     | 93.0µs   | 32.8µs     | **2.84x faster**   |
-| Portfolio Variance (1k x 50)               | 113.1µs  | 109.4µs    | ~1.03x             |
-| Attention Scores (128 x 64)                | 95.1µs   | 96.1µs     | ~1.01x             |
-| Layer Normalization (1k x 512)             | 1.32ms   | 1.08ms     | **1.22x faster**   |
-| Batch Matmul (32 x 64 x 64)                | 100.8µs  | 145.4µs    | 1.44x slower       |
-| Softmax + Cross-Entropy (1k x 100)         | 785.3µs  | 764.3µs    | ~1.03x             |
-| 1D Convolution (10k, kernel=51)            | 18.96ms  | 522.1µs    | **36.31x faster**  |
-| Histogram (100k, 100 bins)                 | 722.5µs  | 330.1µs    | **2.19x faster**   |
-| Percentiles (10k x 50)                     | 11.18ms  | 10.12ms    | ~1.11x             |
-| Jacobi Iteration (200 x 200)               | 323.1µs  | 299.6µs    | ~1.08x             |
-| Trapezoidal Integration (10k pts)          | 33.4µs   | 31.2µs     | ~1.07x             |
-| Finite Difference (200 x 200)              | 112.8µs  | 82.2µs     | **1.37x faster**   |
-| Matrix Exponential (100 x 100)             | 210.4µs  | 189.3µs    | ~1.11x             |
-| Ridge Regression (5k x 100)                | 426.3µs  | 445.4µs    | ~1.04x             |
-| Gram-Schmidt (200 x 50)                    | 2.21ms   | 452.5µs    | **4.87x faster**   |
-| LU Solve (300 x 300)                       | 440.0µs  | 396.9µs    | ~1.11x             |
-| Outer Product (1k x 1k)                    | 396.2µs  | 747.8µs    | 1.89x slower       |
-| Kronecker Product (50x50 ⊗ 20x20)          | 586.5µs  | 929.8µs    | 1.59x slower       |
-| Batch Normalization (256x64x32x32)         | 42.80ms  | 76.54ms    | 1.79x slower       |
-| Dropout Forward (1k x 512)                 | 2.28ms   | 7.23ms     | 3.18x slower       |
-| Xavier Init (4 layers)                     | 8.85ms   | 36.47ms    | 4.12x slower       |
-| Adam Optimizer Step (100k params)          | 308.3µs  | 1.05ms     | 3.42x slower       |
-| Confusion Matrix (10k samples)             | 2.50ms   | 13.5µs     | **185.66x faster** |
-| Bootstrap Mean (1k samples, 1k resamples)  | 9.69ms   | 6.55ms     | **1.48x faster**   |
-| Welch t-Test (500 vs 600)                  | 15.6µs   | 6.5µs      | **2.39x faster**   |
-| KDE (1k points, 200 eval)                  | 1.26ms   | 1.40ms     | ~1.11x             |
-| Moving Window Stats (10k, w=100)           | 89.97ms  | 1.91ms     | **47.08x faster**  |
-| Autocorrelation (5k, lag=100)              | 470.2µs  | 476.1µs    | ~1.01x             |
-| N-Body Step (500 bodies)                   | 18.56ms  | 530.0µs    | **35.02x faster**  |
-| Heat Equation (100x100, 50 steps)          | 2.13ms   | 3.66ms     | 1.72x slower       |
-| Monte Carlo Pi (1M samples)                | 8.30ms   | 15.02ms    | 1.81x slower       |
-| Black-Scholes (10k options)                | 196.7µs  | 555.3µs    | 2.82x slower       |
-| VaR Historical (1k days, 50 assets)        | 40.4µs   | 185.5µs    | 4.59x slower       |
-| EWMA Volatility (2k returns)               | 604.4µs  | 25.7µs     | **23.55x faster**  |
-| Matrix Factorization Step (1k×500)         | 55.52ms  | 1.32ms     | **42.08x faster**  |
-| TF-IDF (500 docs, 1k terms)                | 891.5µs  | 2.95ms     | 3.31x slower       |
-| Bilinear Interpolation (256→512)           | 262.64ms | 930.7µs    | **282.18x faster** |
+| Data Normalization (10k x 100)             | 1.91ms   | 1.22ms     | **1.56x faster**   |
+| Linear Regression (5k x 50)                | 170.6µs  | 161.3µs    | ~1.06x             |
+| PCA via SVD (2k x 100 -> 10)               | 11.24ms  | 12.34ms    | ~1.10x             |
+| Correlation Matrix (5k x 50)               | 1.09ms   | 779.5µs    | **1.39x faster**   |
+| Neural Net Forward (1k x 256->128->64->10) | 401.8µs  | 489.8µs    | 1.22x slower       |
+| Covariance + Eigendecomp (3k x 80)         | 4.04ms   | 3.37ms     | **1.20x faster**   |
+| Least Squares QR (8k x 100)                | 36.16ms  | 40.35ms    | ~1.12x             |
+| Batch Statistics (100 x 1k x 20)           | 7.24ms   | 2.10ms     | **3.45x faster**   |
+| Pairwise Distances (1k x 50)               | 2.95ms   | 3.29ms     | ~1.12x             |
+| Polynomial Fit (1k points, deg 10)         | 165.8µs  | 11.5µs     | **14.47x faster**  |
+| Min-Max Scaling (10k x 100)                | 1.23ms   | 2.52ms     | 2.05x slower       |
+| Outer Product Sum (1k x 100)               | 53.7µs   | 473.7µs    | 8.83x slower       |
+| Weighted Mean (5k x 200)                   | 195.2µs  | 177.5µs    | ~1.10x             |
+| Gradient Descent Step (10k x 50)           | 214.1µs  | 2.85ms     | 13.31x slower      |
+| Cross-Entropy Loss (1k x 10)               | 45.2µs   | 51.3µs     | ~1.13x             |
+| Cosine Similarity (500 x 128)              | 693.0µs  | 564.5µs    | **1.23x faster**   |
+| K-Means Step (5k x 20, k=10)               | 171.1µs  | 217.1µs    | 1.27x slower       |
+| Image Filter (256 x 256)                   | 58.5µs   | 53.9µs     | ~1.09x             |
+| Power Iteration (200 x 200)                | 70.0µs   | 107.6µs    | 1.54x slower       |
+| Rolling Std (10k, window=50)               | 6.10ms   | 6.06ms     | ~1.01x             |
+| Log Returns (5k x 100)                     | 2.78ms   | 2.13ms     | **1.30x faster**   |
+| Sharpe Ratio (1k x 50)                     | 86.3µs   | 30.9µs     | **2.79x faster**   |
+| Portfolio Variance (1k x 50)               | 69.3µs   | 320.4µs    | 4.62x slower       |
+| Attention Scores (128 x 64)                | 87.8µs   | 105.1µs    | 1.20x slower       |
+| Layer Normalization (1k x 512)             | 1.31ms   | 1.48ms     | ~1.13x             |
+| Batch Matmul (32 x 64 x 64)                | 100.3µs  | 144.6µs    | 1.44x slower       |
+| Softmax + Cross-Entropy (1k x 100)         | 737.0µs  | 813.8µs    | ~1.10x             |
+| 1D Convolution (10k, kernel=51)            | 18.84ms  | 520.8µs    | **36.17x faster**  |
+| Histogram (100k, 100 bins)                 | 699.9µs  | 302.1µs    | **2.32x faster**   |
+| Percentiles (10k x 50)                     | 10.88ms  | 9.93ms     | ~1.10x             |
+| Trapezoidal Integration (10k pts)          | 35.0µs   | 31.9µs     | ~1.10x             |
+| Finite Difference (200 x 200)              | 96.0µs   | 261.6µs    | 2.73x slower       |
+| Ridge Regression (5k x 100)                | 478.4µs  | 5.33ms     | 11.15x slower      |
+| LU Solve (300 x 300)                       | 422.3µs  | 411.0µs    | ~1.03x             |
+| Outer Product (1k x 1k)                    | 384.6µs  | 736.6µs    | 1.92x slower       |
+| Kronecker Product (50x50 ⊗ 20x20)          | 553.0µs  | 907.3µs    | 1.64x slower       |
+| Batch Normalization (256x64x32x32)         | 42.23ms  | 95.03ms    | 2.25x slower       |
+| Dropout Forward (1k x 512)                 | 2.27ms   | 7.37ms     | 3.24x slower       |
+| Xavier Init (4 layers)                     | 8.66ms   | 36.36ms    | 4.20x slower       |
+| Adam Optimizer Step (100k params)          | 272.7µs  | 1.55ms     | 5.70x slower       |
+| Confusion Matrix (10k samples)             | 2.46ms   | 14.5µs     | **169.25x faster** |
+| Bootstrap Mean (1k samples, 1k resamples)  | 9.63ms   | 6.36ms     | **1.51x faster**   |
+| Welch t-Test (500 vs 600)                  | 16.3µs   | 6.9µs      | **2.36x faster**   |
+| KDE (1k points, 200 eval)                  | 1.27ms   | 1.40ms     | ~1.10x             |
+| Moving Window Stats (10k, w=100)           | 91.06ms  | 1.63ms     | **55.96x faster**  |
+| Autocorrelation (5k, lag=100)              | 475.9µs  | 473.5µs    | ~1.01x             |
+| FFT Signal Processing (4k samples)         | 83.0µs   | 539.2µs    | 6.49x slower       |
+| Batched Attention (32x64x64)               | 751.8µs  | 7.78ms     | 10.34x slower      |
+| N-Body Step (500 bodies)                   | 7.75ms   | 848.1µs    | **9.14x faster**   |
+| Heat Equation (100x100, 50 steps)          | 2.12ms   | 3.78ms     | 1.78x slower       |
+| Black-Scholes (10k options)                | 196.5µs  | 570.0µs    | 2.90x slower       |
+| VaR Historical (1k days, 50 assets)        | 42.5µs   | 179.5µs    | 4.23x slower       |
+| EWMA Volatility (2k returns)               | 612.7µs  | 25.4µs     | **24.11x faster**  |
+| Matrix Factorization Step (1k×500)         | 54.77ms  | 1.36ms     | **40.15x faster**  |
+| TF-IDF (500 docs, 1k terms)                | 885.2µs  | 3.03ms     | 3.42x slower       |
+| Bilinear Interpolation (256→512)           | 261.05ms | 1.06ms     | **245.77x faster** |
 
-**Summary: numpy-node wins 33/58 scenarios (57%)**
+**Summary: numpy-node wins 26/56 scenarios (46%)**
 
 ## Interpretation
 

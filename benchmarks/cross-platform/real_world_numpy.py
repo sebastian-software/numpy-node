@@ -999,6 +999,62 @@ def scenario_autocorrelation():
     return autocorr
 
 
+def scenario_fft_signal_processing():
+    """
+    FFT-based signal processing: compute frequency spectrum,
+    filter frequencies, and inverse transform.
+    Common in audio processing, communications, vibration analysis.
+    """
+    # Create signal with multiple frequency components + noise
+    n = 4096
+    t = np.linspace(0, 1, n)
+    # Signal: 50 Hz + 120 Hz + noise
+    signal = np.sin(2 * np.pi * 50 * t) + 0.5 * np.sin(2 * np.pi * 120 * t) + 0.2 * np.random.randn(n)
+
+    def fft_process():
+        # Forward FFT
+        spectrum = np.fft.fft(signal)
+        # Compute power spectrum
+        power = np.abs(spectrum) ** 2
+        # Apply simple low-pass filter (zero out high frequencies)
+        filtered = spectrum.copy()
+        filtered[200:-200] = 0
+        # Inverse FFT
+        reconstructed = np.fft.ifft(filtered)
+        return np.real(reconstructed), power[:n//2]
+
+    return fft_process
+
+
+def scenario_batched_attention():
+    """
+    Batched attention computation using matrix multiplication.
+    Essential for transformer architectures and deep learning.
+    Uses np.matmul (@ operator) for batched operations.
+    """
+    batch_size = 32
+    seq_len = 64
+    d_model = 64
+    Q = np.random.randn(batch_size, seq_len, d_model).astype(np.float64)
+    K = np.random.randn(batch_size, seq_len, d_model).astype(np.float64)
+    V = np.random.randn(batch_size, seq_len, d_model).astype(np.float64)
+
+    # Pre-transpose K to (batch, d_model, seq) for Q @ K^T
+    KT = K.transpose(0, 2, 1)
+
+    def batched_attention():
+        # Attention scores: Q @ K^T for each batch -> (batch, seq, seq)
+        scores = Q @ KT
+        # Apply softmax (simplified)
+        scores_exp = np.exp(scores - scores.max(axis=-1, keepdims=True))
+        attention = scores_exp / scores_exp.sum(axis=-1, keepdims=True)
+        # Weighted sum of values: attention @ V -> (batch, seq, d_model)
+        output = attention @ V
+        return output
+
+    return batched_attention
+
+
 def scenario_nbody_step():
     """
     N-body gravitational simulation step.
@@ -1303,13 +1359,10 @@ def run_benchmarks() -> List[Dict[str, Any]]:
         ("Histogram (100k, 100 bins)", scenario_histogram),
         ("Percentiles (10k x 50)", scenario_percentiles),
         # Numerical Methods
-        ("Jacobi Iteration (200 x 200)", scenario_jacobi_iteration),
         ("Trapezoidal Integration (10k pts)", scenario_trapezoidal_integration),
         ("Finite Difference (200 x 200)", scenario_finite_difference),
-        ("Matrix Exponential (100 x 100)", scenario_matrix_exponential),
         # Regularization / Decomposition
         ("Ridge Regression (5k x 100)", scenario_ridge_regression),
-        ("Gram-Schmidt (200 x 50)", scenario_gram_schmidt),
         ("LU Solve (300 x 300)", scenario_lu_solve),
         # Matrix Operations
         ("Outer Product (1k x 1k)", scenario_outer_product),
@@ -1327,9 +1380,10 @@ def run_benchmarks() -> List[Dict[str, Any]]:
         ("Moving Window Stats (10k, w=100)", scenario_moving_window_stats),
         # Signal Processing / Physics
         ("Autocorrelation (5k, lag=100)", scenario_autocorrelation),
+        ("FFT Signal Processing (4k samples)", scenario_fft_signal_processing),
+        ("Batched Attention (32x64x64)", scenario_batched_attention),
         ("N-Body Step (500 bodies)", scenario_nbody_step),
         ("Heat Equation (100x100, 50 steps)", scenario_heat_equation),
-        ("Monte Carlo Pi (1M samples)", scenario_monte_carlo_pi),
         # Finance (Additional)
         ("Black-Scholes (10k options)", scenario_black_scholes),
         ("VaR Historical (1k days, 50 assets)", scenario_var_historical),

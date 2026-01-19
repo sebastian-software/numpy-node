@@ -34,25 +34,140 @@ import {
   normal_equations,
   zscore,
   corrcoef,
-  gram_matrix,
-  softmax,
-  pdist_sq,
-  affine,
-  row_divide,
-  xtx,
-  xty,
   percentile,
-  minmax_scale,
   kron,
   outer,
-  matrix_exp,
   axpby,
-  matvec,
-  norm_sq,
-  jacobi_step,
-  gradient_2d,
+  fft,
+  einsum,
   NDArray,
 } from '../../src/index.js';
+
+// Helper: softmax using composition (exp, sum, divide)
+function softmax(x: NDArray): NDArray {
+  const xMax = max(x) as number;
+  const expX = exp(subtract(x, xMax));
+  const sumExpX = sum(expX) as number;
+  return divide(expX, sumExpX);
+}
+
+// Helper: gram matrix X @ X.T using matmul
+function gram_matrix(x: NDArray): NDArray {
+  return matmul_nt(x, x);
+}
+
+// Helper: pairwise squared distances
+function pdist_sq(x: NDArray): NDArray {
+  // ||a - b||² = ||a||² + ||b||² - 2*a·b
+  const n = x.shape[0];
+  const xNormSq = sum(multiply(x, x), 1) as NDArray; // [n]
+  const gram = matmul_nt(x, x); // [n, n]
+  // Broadcast: xNormSq[:, None] + xNormSq[None, :] - 2*gram
+  const xNormSqData = xNormSq.data as Float64Array;
+  const gramData = gram.data as Float64Array;
+  const result = zeros([n, n]);
+  const resultData = result.data as Float64Array;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      resultData[i * n + j] = xNormSqData[i] + xNormSqData[j] - 2 * gramData[i * n + j];
+    }
+  }
+  return result;
+}
+
+// Helper: affine transform gamma * x + beta
+function affine(x: NDArray, gamma: NDArray, beta: NDArray): NDArray {
+  return add(multiply(x, gamma), beta);
+}
+
+// Helper: row-wise division x / scales (broadcasting)
+// For x [m, n] and scales [m], reshape scales to [m, 1] for proper broadcasting
+function row_divide(x: NDArray, scales: NDArray): NDArray {
+  const reshapedScales = scales.reshape([scales.shape[0], 1]);
+  return divide(x, reshapedScales);
+}
+
+// Helper: X.T @ X
+function xtx(x: NDArray): NDArray {
+  return matmul(x.T, x);
+}
+
+// Helper: X.T @ y
+function xty(x: NDArray, y: NDArray): NDArray {
+  return matmul(x.T, y);
+}
+
+// Helper: min-max scaling
+function minmax_scale(x: NDArray, axis: number): NDArray {
+  const minVal = min(x, axis) as NDArray;
+  const maxVal = max(x, axis) as NDArray;
+  const range = subtract(maxVal, minVal);
+  return divide(subtract(x, minVal), range);
+}
+
+// Helper: matrix-vector multiply
+function matvec(A: NDArray, x: NDArray): NDArray {
+  return matmul(A, x.reshape([x.size, 1])).reshape([A.shape[0]]);
+}
+
+// Helper: squared norm along axis
+function norm_sq(x: NDArray, axis?: number): NDArray | number {
+  return sum(multiply(x, x), axis);
+}
+
+// Helper: Jacobi iteration step
+function jacobi_step(R: NDArray, x: NDArray, b: NDArray, D: NDArray): NDArray {
+  // x_new = (b - R @ x) / D
+  const Rx = matmul(R, x.reshape([x.size, 1])).reshape([x.size]);
+  return divide(subtract(b, Rx), D);
+}
+
+// Helper: Matrix exponential using Taylor series
+function matrix_exp(A: NDArray, numTerms: number = 10): NDArray {
+  const n = A.shape[0];
+  let result = eye(n);
+  let term = eye(n);
+
+  for (let k = 1; k < numTerms; k++) {
+    term = divide(matmul(term, A), k);
+    result = add(result, term);
+  }
+
+  return result;
+}
+
+// Helper: 2D gradient (finite differences)
+function gradient_2d(f: NDArray, h: number = 1): { dfdx: NDArray; dfdy: NDArray } {
+  const [rows, cols] = f.shape;
+  const fData = f.data as Float64Array;
+  const dfdx = zeros([rows, cols]);
+  const dfdy = zeros([rows, cols]);
+  const dxData = dfdx.data as Float64Array;
+  const dyData = dfdy.data as Float64Array;
+
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      // Central differences for interior, forward/backward for edges
+      if (j > 0 && j < cols - 1) {
+        dxData[i * cols + j] = (fData[i * cols + j + 1] - fData[i * cols + j - 1]) / (2 * h);
+      } else if (j === 0) {
+        dxData[i * cols + j] = (fData[i * cols + j + 1] - fData[i * cols + j]) / h;
+      } else {
+        dxData[i * cols + j] = (fData[i * cols + j] - fData[i * cols + j - 1]) / h;
+      }
+
+      if (i > 0 && i < rows - 1) {
+        dyData[i * cols + j] = (fData[(i + 1) * cols + j] - fData[(i - 1) * cols + j]) / (2 * h);
+      } else if (i === 0) {
+        dyData[i * cols + j] = (fData[(i + 1) * cols + j] - fData[i * cols + j]) / h;
+      } else {
+        dyData[i * cols + j] = (fData[i * cols + j] - fData[(i - 1) * cols + j]) / h;
+      }
+    }
+  }
+
+  return { dfdx, dfdy };
+}
 
 interface BenchmarkResult {
   name: string;
@@ -1427,6 +1542,120 @@ function scenarioAutocorrelation() {
   };
 }
 
+function scenarioFFTSignalProcessing() {
+  /**
+   * FFT-based signal processing: compute frequency spectrum,
+   * filter frequencies, and inverse transform.
+   * Common in audio processing, communications, vibration analysis.
+   */
+  const n = 4096;
+  const t = linspace(0, 1, n);
+  const tArr = t.data as Float64Array;
+
+  // Create signal with multiple frequency components + noise
+  const signalData: number[] = [];
+  for (let i = 0; i < n; i++) {
+    signalData.push(
+      Math.sin(2 * Math.PI * 50 * tArr[i]) +
+        0.5 * Math.sin(2 * Math.PI * 120 * tArr[i]) +
+        0.2 * (Math.random() * 2 - 1)
+    );
+  }
+  const signal = array(signalData);
+
+  return function fftProcess() {
+    // Forward FFT
+    const spectrum = fft.fft(signal);
+    // Compute power spectrum
+    const realArr = spectrum.real.data as Float64Array;
+    const imagArr = spectrum.imag.data as Float64Array;
+    const power = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      power[i] = realArr[i] * realArr[i] + imagArr[i] * imagArr[i];
+    }
+
+    // Apply simple low-pass filter (zero out high frequencies)
+    const filteredReal = new Float64Array(n);
+    const filteredImag = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      if (i < 200 || i >= n - 200) {
+        filteredReal[i] = realArr[i];
+        filteredImag[i] = imagArr[i];
+      }
+    }
+
+    // Inverse FFT
+    const filtered = {
+      real: array(Array.from(filteredReal)),
+      imag: array(Array.from(filteredImag)),
+    };
+    const reconstructed = fft.ifft(filtered);
+
+    return { reconstructed: reconstructed.real, power: power.slice(0, n / 2) };
+  };
+}
+
+function scenarioBatchedAttention() {
+  /**
+   * Batched attention computation using matrix multiplication.
+   * Essential for transformer architectures and deep learning.
+   */
+  const batchSize = 32;
+  const seqLen = 64;
+  const dModel = 64;
+
+  // Create individual Q, K, V matrices per batch
+  const Qs: NDArray[] = [];
+  const Ks: NDArray[] = [];
+  const Vs: NDArray[] = [];
+  for (let b = 0; b < batchSize; b++) {
+    const qData: number[] = [];
+    const kData: number[] = [];
+    const vData: number[] = [];
+    for (let i = 0; i < seqLen * dModel; i++) {
+      qData.push(Math.random() * 2 - 1);
+      kData.push(Math.random() * 2 - 1);
+      vData.push(Math.random() * 2 - 1);
+    }
+    Qs.push(array(qData).reshape([seqLen, dModel]));
+    Ks.push(array(kData).reshape([seqLen, dModel]));
+    Vs.push(array(vData).reshape([seqLen, dModel]));
+  }
+
+  return function batchedAttention() {
+    const outputs: NDArray[] = [];
+
+    for (let b = 0; b < batchSize; b++) {
+      // Q @ K^T -> (seq, seq)
+      const scores = matmul_nt(Qs[b], Ks[b]);
+
+      // Apply softmax (simplified - just exp and normalize)
+      const scoresExp = exp(scores);
+      const scoresData = scoresExp.data as Float64Array;
+
+      // Manual row-wise normalization
+      const attention = new Float64Array(seqLen * seqLen);
+      for (let q = 0; q < seqLen; q++) {
+        let rowSum = 0;
+        const rowStart = q * seqLen;
+        for (let k = 0; k < seqLen; k++) {
+          rowSum += scoresData[rowStart + k];
+        }
+        for (let k = 0; k < seqLen; k++) {
+          attention[rowStart + k] = scoresData[rowStart + k] / rowSum;
+        }
+      }
+      const attentionArr = array(Array.from(attention)).reshape([seqLen, seqLen]);
+
+      // attention @ V -> (seq, d_model)
+      const output = matmul(attentionArr, Vs[b]);
+      outputs.push(output);
+    }
+
+    return outputs;
+  };
+}
+
 function scenarioNBodyStep() {
   /**
    * N-body gravitational simulation step.
@@ -1863,13 +2092,10 @@ function runBenchmarks(): BenchmarkResult[] {
     ['Histogram (100k, 100 bins)', scenarioHistogram],
     ['Percentiles (10k x 50)', scenarioPercentiles],
     // Numerical Methods
-    ['Jacobi Iteration (200 x 200)', scenarioJacobiIteration],
     ['Trapezoidal Integration (10k pts)', scenarioTrapezoidalIntegration],
     ['Finite Difference (200 x 200)', scenarioFiniteDifference],
-    ['Matrix Exponential (100 x 100)', scenarioMatrixExponential],
     // Regularization / Decomposition
     ['Ridge Regression (5k x 100)', scenarioRidgeRegression],
-    ['Gram-Schmidt (200 x 50)', scenarioGramSchmidt],
     ['LU Solve (300 x 300)', scenarioLUDecomposition],
     // Matrix Operations
     ['Outer Product (1k x 1k)', scenarioOuterProduct],
@@ -1887,9 +2113,10 @@ function runBenchmarks(): BenchmarkResult[] {
     ['Moving Window Stats (10k, w=100)', scenarioMovingWindowStats],
     // Signal Processing / Physics
     ['Autocorrelation (5k, lag=100)', scenarioAutocorrelation],
+    ['FFT Signal Processing (4k samples)', scenarioFFTSignalProcessing],
+    ['Batched Attention (32x64x64)', scenarioBatchedAttention],
     ['N-Body Step (500 bodies)', scenarioNBodyStep],
     ['Heat Equation (100x100, 50 steps)', scenarioHeatEquation],
-    ['Monte Carlo Pi (1M samples)', scenarioMonteCarloPi],
     // Finance (Additional)
     ['Black-Scholes (10k options)', scenarioBlackScholes],
     ['VaR Historical (1k days, 50 assets)', scenarioVaRHistorical],
