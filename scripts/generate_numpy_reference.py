@@ -447,6 +447,25 @@ def generate_reference():
         "randint": to_serializable(randint_vals),
     }
 
+    # =========================================================================
+    # FFT (Fast Fourier Transform)
+    # =========================================================================
+    fft_input = np.array([1.0, 2.0, 3.0, 4.0])
+    fft_result = np.fft.fft(fft_input)
+
+    ref["tests"]["fft"] = {
+        "input": to_serializable(fft_input),
+        "fft_real": to_serializable(fft_result.real),
+        "fft_imag": to_serializable(fft_result.imag),
+        "ifft_real": to_serializable(np.fft.ifft(fft_result).real),
+        "ifft_imag": to_serializable(np.fft.ifft(fft_result).imag),
+        "rfft_real": to_serializable(np.fft.rfft(fft_input).real),
+        "rfft_imag": to_serializable(np.fft.rfft(fft_input).imag),
+        "irfft": to_serializable(np.fft.irfft(np.fft.rfft(fft_input), n=4)),
+        "fftfreq": to_serializable(np.fft.fftfreq(4, 1)),
+        "rfftfreq": to_serializable(np.fft.rfftfreq(4, 1)),
+    }
+
     return ref
 
 if __name__ == "__main__":

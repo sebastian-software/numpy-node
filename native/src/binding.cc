@@ -3,6 +3,7 @@
 #include "linalg.h"
 #include "math_ops.h"
 #include "random.h"
+#include "fft_ops.h"
 
 /**
  * Module initialization
@@ -15,6 +16,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     numpy_node::linalg::Init(env, exports);
     numpy_node::math::Init(env, exports);
     numpy_node::random::Init(env, exports);
+    numpy_node::fft::Init(env, exports);
 
     // Version info
     exports.Set("version", Napi::String::New(env, "0.1.0"));

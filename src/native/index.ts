@@ -140,5 +140,17 @@ export {
 // Random number generation
 export * as random from './random.js';
 
+// FFT (Fast Fourier Transform)
+export * as fft from './fft.js';
+export {
+  fft as fftTransform,
+  ifft,
+  rfft,
+  irfft,
+  fftfreq,
+  rfftfreq,
+  type ComplexArray,
+} from './fft.js';
+
 // Native module info
 export { backend, version } from './loader.js';

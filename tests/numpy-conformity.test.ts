@@ -84,6 +84,7 @@ import {
   mod,
   isclose,
   allclose,
+  fft,
   matmul,
   dot,
   inv,
@@ -131,6 +132,7 @@ interface ReferenceData {
     linalg: TestCategory;
     advanced_math: TestCategory;
     random: TestCategory;
+    fft: TestCategory;
   };
 }
 
@@ -1425,6 +1427,56 @@ describe('NumPy Conformity Tests', () => {
     });
   });
 
+  describe('FFT (Fast Fourier Transform)', () => {
+    it('fft - real part', () => {
+      const x = array([1.0, 2.0, 3.0, 4.0]);
+      const result = fft.fft(x);
+      expectArrayClose(result.real, ref.tests.fft.fft_real as ArrayRef);
+    });
+
+    it('fft - imag part', () => {
+      const x = array([1.0, 2.0, 3.0, 4.0]);
+      const result = fft.fft(x);
+      expectArrayClose(result.imag, ref.tests.fft.fft_imag as ArrayRef);
+    });
+
+    it('ifft - round trip', () => {
+      const x = array([1.0, 2.0, 3.0, 4.0]);
+      const freq = fft.fft(x);
+      const recovered = fft.ifft(freq);
+      expectArrayClose(recovered.real, ref.tests.fft.ifft_real as ArrayRef);
+    });
+
+    it('rfft - real part', () => {
+      const x = array([1.0, 2.0, 3.0, 4.0]);
+      const result = fft.rfft(x);
+      expectArrayClose(result.real, ref.tests.fft.rfft_real as ArrayRef);
+    });
+
+    it('rfft - imag part', () => {
+      const x = array([1.0, 2.0, 3.0, 4.0]);
+      const result = fft.rfft(x);
+      expectArrayClose(result.imag, ref.tests.fft.rfft_imag as ArrayRef);
+    });
+
+    it('irfft - round trip', () => {
+      const x = array([1.0, 2.0, 3.0, 4.0]);
+      const freq = fft.rfft(x);
+      const recovered = fft.irfft(freq, 4);
+      expectArrayClose(recovered, ref.tests.fft.irfft as ArrayRef);
+    });
+
+    it('fftfreq', () => {
+      const result = fft.fftfreq(4, 1);
+      expectArrayClose(result, ref.tests.fft.fftfreq as ArrayRef);
+    });
+
+    it('rfftfreq', () => {
+      const result = fft.rfftfreq(4, 1);
+      expectArrayClose(result, ref.tests.fft.rfftfreq as ArrayRef);
+    });
+  });
+
   // Random tests are skipped because numpy-node uses a different RNG implementation
   describe.skip('Random (deterministic)', () => {
     // These would require implementing the exact same RNG as NumPy
@@ -1531,6 +1583,9 @@ describe('Completeness Check', () => {
 
     // Advanced math
     advanced_math: ['outer', 'kron', 'percentile', 'corrcoef'],
+
+    // FFT
+    fft: ['fft', 'ifft', 'rfft', 'irfft', 'fftfreq', 'rfftfreq'],
   };
 
   // Functions tested in this file (update when adding new tests)
@@ -1584,6 +1639,7 @@ describe('Completeness Check', () => {
       'cholesky',
     ],
     advanced_math: ['outer', 'kron', 'percentile', 'corrcoef'],
+    fft: ['fft', 'ifft', 'rfft', 'irfft', 'fftfreq', 'rfftfreq'],
   };
 
   for (const [category, requiredFunctions] of Object.entries(REQUIRED_COVERAGE)) {
@@ -1624,9 +1680,6 @@ describe('Completeness Check', () => {
     // NumPy functions NOT YET implemented (from MISSING_FEATURES.md)
     const MISSING_FROM_NUMPY = [
       // Tier 5 - Advanced
-      'fft',
-      'ifft',
-      'rfft',
       'einsum',
     ];
 
@@ -1750,6 +1803,13 @@ describe('Completeness Check', () => {
       // Approximate comparison
       'isclose',
       'allclose',
+      // FFT
+      'fftTransform',
+      'ifft',
+      'rfft',
+      'irfft',
+      'fftfreq',
+      'rfftfreq',
       // Linear algebra
       'matmul',
       'matmul_nt',
@@ -1794,6 +1854,13 @@ describe('Completeness Check', () => {
       'qr', // TODO: add test
       'lstsq', // TODO: add test
       'normal_equations', // extension
+      // FFT (tested via namespace, not direct exports)
+      'fftTransform', // alias for fft.fft
+      'ifft', // tested via fft.ifft
+      'rfft', // tested via fft.rfft
+      'irfft', // tested via fft.irfft
+      'fftfreq', // tested via fft.fftfreq
+      'rfftfreq', // tested via fft.rfftfreq
     ];
 
     const allTracked = [...Object.values(REQUIRED_COVERAGE).flat(), ...EXCLUDED_FROM_CONFORMITY];

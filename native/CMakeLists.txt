@@ -28,6 +28,7 @@ set(SOURCES
     src/linalg.cc
     src/math_ops.cc
     src/random.cc
+    src/fft_ops.cc
 )
 
 # Header files
@@ -36,6 +37,7 @@ set(HEADERS
     src/linalg.h
     src/math_ops.h
     src/random.h
+    src/fft_ops.h
 )
 
 # Create the native addon

@@ -18,6 +18,7 @@ These functions are already available:
 - **Sorting/Searching:** `diff`, `sort`, `argsort`, `unique`, `searchsorted`
 - **Advanced:** `outer`, `kron`, `percentile`, `corrcoef`, `zscore`
 - **Random:** `random.random`, `random.uniform`, `random.normal`, `random.randint`, `random.seed`
+- **FFT:** `fft.fft`, `fft.ifft`, `fft.rfft`, `fft.irfft`, `fft.fftfreq`, `fft.rfftfreq`
 
 ---
 
@@ -49,12 +50,11 @@ _All Tier 4 functions implemented: `flip`, `rot90`, `sign`, `mod`, `allclose`, `
 
 Complex to implement but enables new domains.
 
-| Function                        | Description            | Use Case                 | Complexity |
-| ------------------------------- | ---------------------- | ------------------------ | ---------- |
-| `fft(a)`                        | Fast Fourier Transform | Audio, Signal Processing | High       |
-| `ifft(a)`                       | Inverse FFT            | Frequency to Time        | High       |
-| `rfft(a)`                       | Real FFT               | More efficient for real  | High       |
-| `einsum(subscripts, *operands)` | Einstein Summation     | Flexible Tensor Ops      | High       |
+| Function                        | Description        | Use Case            | Complexity |
+| ------------------------------- | ------------------ | ------------------- | ---------- |
+| `einsum(subscripts, *operands)` | Einstein Summation | Flexible Tensor Ops | High       |
+
+_Implemented: `fft`, `ifft`, `rfft`, `irfft`, `fftfreq`, `rfftfreq` (via fft namespace)_
 
 ---
 
@@ -85,25 +85,26 @@ Complex to implement but enables new domains.
 
 1. ~~Array manipulation: `flip`, `rot90`, `split`, `sign`, `mod`, `nonzero`~~
 2. ~~Approximate comparison: `allclose`, `isclose`~~
-3. FFT: Accelerate Framework has vDSP*fft*\*
+3. ~~FFT: `fft`, `ifft`, `rfft`, `irfft` - Accelerate vDSP + Cooley-Tukey fallback~~
 4. `einsum`: Complex parser + optimized contractions
 
 ---
 
 ## Coverage Summary
 
-| Category           | Implemented | Missing             | Coverage |
-| ------------------ | ----------- | ------------------- | -------- |
-| Array Creation     | 12          | 0                   | 100%     |
-| Arithmetic         | 5           | 0                   | 100%     |
-| Unary Math         | 13          | 0                   | 100%     |
-| Reductions         | 12          | 0                   | 100%     |
-| Comparison         | 8           | 0                   | 100%     |
-| Logical            | 4           | 0                   | 100%     |
-| Boolean Reductions | 2           | 0                   | 100%     |
-| Linear Algebra     | 15          | 0                   | 100%     |
-| Sorting/Searching  | 5           | 0                   | 100%     |
-| Array Manipulation | 18          | 0                   | 100%     |
-| **Total (Core)**   | **~94**     | **4 (FFT, einsum)** | **~96%** |
+| Category           | Implemented | Missing        | Coverage |
+| ------------------ | ----------- | -------------- | -------- |
+| Array Creation     | 12          | 0              | 100%     |
+| Arithmetic         | 5           | 0              | 100%     |
+| Unary Math         | 13          | 0              | 100%     |
+| Reductions         | 12          | 0              | 100%     |
+| Comparison         | 8           | 0              | 100%     |
+| Logical            | 4           | 0              | 100%     |
+| Boolean Reductions | 2           | 0              | 100%     |
+| Linear Algebra     | 15          | 0              | 100%     |
+| Sorting/Searching  | 5           | 0              | 100%     |
+| Array Manipulation | 18          | 0              | 100%     |
+| FFT                | 6           | 0              | 100%     |
+| **Total (Core)**   | **~100**    | **1 (einsum)** | **~99%** |
 
-_Note: "Core" refers to the most commonly used NumPy functions. Only advanced FFT and einsum remain unimplemented._
+_Note: "Core" refers to the most commonly used NumPy functions. Only `einsum` remains unimplemented._

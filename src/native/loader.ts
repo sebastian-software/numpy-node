@@ -215,6 +215,24 @@ export interface RandomModule {
 }
 
 /**
+ * Complex result from FFT operations
+ */
+export interface ComplexResult {
+  real: NativeNDArray;
+  imag: NativeNDArray;
+}
+
+/**
+ * FFT module interface
+ */
+export interface FftModule {
+  fft(a: NativeNDArray, n?: number): ComplexResult;
+  ifft(a: ComplexResult | NativeNDArray, n?: number): ComplexResult;
+  rfft(a: NativeNDArray, n?: number): ComplexResult;
+  irfft(a: ComplexResult, n?: number): NativeNDArray;
+}
+
+/**
  * Native module interface
  */
 export interface NativeModule {
@@ -236,6 +254,7 @@ export interface NativeModule {
   linalg: LinalgModule;
   math: MathModule;
   random: RandomModule;
+  fft: FftModule;
 }
 
 /**
