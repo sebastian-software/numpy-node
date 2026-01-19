@@ -80,6 +80,25 @@ Uses esbuild-style distribution with optional dependencies:
 
 Main package has these as `optionalDependencies` - npm installs only the matching platform.
 
+### pnpm Workspaces
+
+Platform packages are managed via pnpm workspaces (`pnpm-workspace.yaml`). The main package uses `workspace:*` for optionalDependencies:
+
+```json
+"optionalDependencies": {
+  "@numpy-node/darwin-arm64": "workspace:*",
+  ...
+}
+```
+
+**How it works:**
+
+- `pnpm install` resolves `workspace:*` to local packages
+- `pnpm publish` replaces `workspace:*` with the actual version automatically
+- Release Please updates versions in all `packages/*/package.json` via `extra-files`
+
+**Publishing order matters:** Platform packages must be published BEFORE the main package (handled by publish.yml).
+
 ## CI/CD Notes
 
 - **macOS**: Use `macos-15` (Intel runners retired)

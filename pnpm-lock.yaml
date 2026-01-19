@@ -8,17 +8,17 @@ importers:
   .:
     optionalDependencies:
       '@numpy-node/darwin-arm64':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: workspace:*
+        version: link:packages/darwin-arm64
       '@numpy-node/linux-arm64':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: workspace:*
+        version: link:packages/linux-arm64
       '@numpy-node/linux-x64':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: workspace:*
+        version: link:packages/linux-x64
       '@numpy-node/win32-x64':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: workspace:*
+        version: link:packages/win32-x64
     devDependencies:
       '@eslint/js':
         specifier: ^9.18.0
@@ -65,6 +65,14 @@ importers:
       vitest:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.19.7)
+
+  packages/darwin-arm64: {}
+
+  packages/linux-arm64: {}
+
+  packages/linux-x64: {}
+
+  packages/win32-x64: {}
 
 packages:
   '@ampproject/remapping@2.3.0':
@@ -681,38 +689,6 @@ packages:
       {
         integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==,
       }
-
-  '@numpy-node/darwin-arm64@0.1.0':
-    resolution:
-      {
-        integrity: sha512-EQhwJ6HAnlx5JMCYpDiOthWAPBCGXJei7Yvyg/+QYm04G4MkAYXhliwjmS0IS5Yuzh5gqci51P6xhO7aiWbIIQ==,
-      }
-    cpu: [arm64]
-    os: [darwin]
-
-  '@numpy-node/linux-arm64@0.1.0':
-    resolution:
-      {
-        integrity: sha512-WfRafSR8CaSMyTCunLskp5kNTvrSIUcyjGLfuTz0NM6XrsqUaub1//nZtMYPYsdT4KiD6wbUbqM2eCKFYroJOg==,
-      }
-    cpu: [arm64]
-    os: [linux]
-
-  '@numpy-node/linux-x64@0.1.0':
-    resolution:
-      {
-        integrity: sha512-P8dsmWkhCLYf8fCkFI6it35pr7uM6S1SrmisijTYEFOqI4idfdue/WX4BNY11F6JLXZiWSX78Laurd024Rt3Gw==,
-      }
-    cpu: [x64]
-    os: [linux]
-
-  '@numpy-node/win32-x64@0.1.0':
-    resolution:
-      {
-        integrity: sha512-2WMtaGKVfshEbTpNVjejmgSmpVlqXT5WW2UsRHfCFLn41mkpgUWMnVNMvXuXLERthphFevhnZNzlEJ+/ibuLfQ==,
-      }
-    cpu: [x64]
-    os: [win32]
 
   '@pkgjs/parseargs@0.11.0':
     resolution:
@@ -3311,18 +3287,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@numpy-node/darwin-arm64@0.1.0':
-    optional: true
-
-  '@numpy-node/linux-arm64@0.1.0':
-    optional: true
-
-  '@numpy-node/linux-x64@0.1.0':
-    optional: true
-
-  '@numpy-node/win32-x64@0.1.0':
-    optional: true
 
   '@pkgjs/parseargs@0.11.0':
     optional: true

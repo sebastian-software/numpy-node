@@ -118,30 +118,10 @@ jobs:
       - name: Build TypeScript
         run: pnpm build
 
-      - name: Sync version to platform packages
+      - name: Get version
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          # Update platform package versions
-          node -e "
-            const fs = require('fs');
-            const version = '$VERSION';
-            const platforms = ['darwin-arm64', 'linux-x64', 'linux-arm64', 'win32-x64'];
-            for (const platform of platforms) {
-              const pkgPath = 'packages/' + platform + '/package.json';
-              const json = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-              json.version = version;
-              fs.writeFileSync(pkgPath, JSON.stringify(json, null, 2) + '\n');
-            }
-            // Also update optionalDependencies in main package
-            const mainPkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            if (mainPkg.optionalDependencies) {
-              for (const dep of Object.keys(mainPkg.optionalDependencies)) {
-                mainPkg.optionalDependencies[dep] = version;
-              }
-              fs.writeFileSync('package.json', JSON.stringify(mainPkg, null, 2) + '\n');
-            }
-          "
 
       - name: Publish platform packages (dry run)
         if: ${{ inputs.dry-run == true }}
@@ -167,6 +147,7 @@ jobs:
           echo "Would publish main package version $VERSION"
           ls -la dist/
 
+      # Use pnpm publish for main package to resolve workspace:* protocol
       - name: Publish main package
         if: ${{ inputs.dry-run != true }}
-        run: npm publish --access public --provenance
+        run: pnpm publish --access public --provenance --no-git-checks

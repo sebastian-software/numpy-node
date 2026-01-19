@@ -83,10 +83,10 @@
     }
   },
   "optionalDependencies": {
-    "@numpy-node/darwin-arm64": "0.1.0",
-    "@numpy-node/linux-arm64": "0.1.0",
-    "@numpy-node/linux-x64": "0.1.0",
-    "@numpy-node/win32-x64": "0.1.0"
+    "@numpy-node/darwin-arm64": "workspace:*",
+    "@numpy-node/linux-arm64": "workspace:*",
+    "@numpy-node/linux-x64": "workspace:*",
+    "@numpy-node/win32-x64": "workspace:*"
   },
   "cmake-js": {
     "directory": "native",
