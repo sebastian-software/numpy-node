@@ -140,8 +140,8 @@ export function tan(a: NDArray): NDArray {
 /**
  * Sum of array elements
  */
-export function sum(a: NDArray, axis?: number): NDArray | number {
-  const result = math.sum(a._native, axis);
+export function sum(a: NDArray, axis?: number, keepdims?: boolean): NDArray | number {
+  const result = math.sum(a._native, axis, keepdims);
   if (typeof result === 'number') {
     return result;
   }
@@ -150,9 +150,12 @@ export function sum(a: NDArray, axis?: number): NDArray | number {
 
 /**
  * Mean of array elements
+ * @param a Input array
+ * @param axis Axis along which to compute mean (optional)
+ * @param keepdims If true, reduced axes are left with size 1 (optional)
  */
-export function mean(a: NDArray, axis?: number): NDArray | number {
-  const result = math.mean(a._native, axis);
+export function mean(a: NDArray, axis?: number, keepdims?: boolean): NDArray | number {
+  const result = math.mean(a._native, axis, keepdims);
   if (typeof result === 'number') {
     return result;
   }
@@ -190,9 +193,12 @@ export function median(a: NDArray): number {
 
 /**
  * Minimum of array elements
+ * @param a Input array
+ * @param axis Axis along which to find minimum (optional)
+ * @param keepdims If true, reduced axes are left with size 1 (optional)
  */
-export function min(a: NDArray, axis?: number): NDArray | number {
-  const result = math.min(a._native, axis);
+export function min(a: NDArray, axis?: number, keepdims?: boolean): NDArray | number {
+  const result = math.min(a._native, axis, keepdims);
   if (typeof result === 'number') {
     return result;
   }
@@ -201,9 +207,12 @@ export function min(a: NDArray, axis?: number): NDArray | number {
 
 /**
  * Maximum of array elements
+ * @param a Input array
+ * @param axis Axis along which to find maximum (optional)
+ * @param keepdims If true, reduced axes are left with size 1 (optional)
  */
-export function max(a: NDArray, axis?: number): NDArray | number {
-  const result = math.max(a._native, axis);
+export function max(a: NDArray, axis?: number, keepdims?: boolean): NDArray | number {
+  const result = math.max(a._native, axis, keepdims);
   if (typeof result === 'number') {
     return result;
   }

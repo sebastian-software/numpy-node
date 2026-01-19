@@ -138,14 +138,14 @@ export interface MathModule {
   sin(a: NativeNDArray): NativeNDArray;
   cos(a: NativeNDArray): NativeNDArray;
   tan(a: NativeNDArray): NativeNDArray;
-  sum(a: NativeNDArray, axis?: number): NativeNDArray | number;
+  sum(a: NativeNDArray, axis?: number, keepdims?: boolean): NativeNDArray | number;
   prod(a: NativeNDArray, axis?: number): NativeNDArray | number;
-  mean(a: NativeNDArray, axis?: number): NativeNDArray | number;
+  mean(a: NativeNDArray, axis?: number, keepdims?: boolean): NativeNDArray | number;
   std(a: NativeNDArray, axis?: number): NativeNDArray | number;
   var(a: NativeNDArray, axis?: number): NativeNDArray | number;
   median(a: NativeNDArray): number;
-  min(a: NativeNDArray, axis?: number): NativeNDArray | number;
-  max(a: NativeNDArray, axis?: number): NativeNDArray | number;
+  min(a: NativeNDArray, axis?: number, keepdims?: boolean): NativeNDArray | number;
+  max(a: NativeNDArray, axis?: number, keepdims?: boolean): NativeNDArray | number;
   argmin(a: NativeNDArray, axis?: number): NativeNDArray | number;
   argmax(a: NativeNDArray, axis?: number): NativeNDArray | number;
   cumsum(a: NativeNDArray, axis?: number): NativeNDArray;

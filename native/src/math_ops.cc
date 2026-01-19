@@ -913,12 +913,19 @@ Napi::Value Sum(const Napi::CallbackInfo& info) {
     NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
     double* data = static_cast<double*>(a->data());
     int64_t size = a->size();
+    const auto& shape = a->shape();
+    int ndim = static_cast<int>(shape.size());
+
+    // Check for keepdims parameter (3rd argument)
+    bool keepdims = false;
+    if (info.Length() >= 3 && info[2].IsBoolean()) {
+        keepdims = info[2].As<Napi::Boolean>().Value();
+    }
 
     // Check for axis parameter
     if (info.Length() >= 2 && !info[1].IsUndefined()) {
         int axis = info[1].As<Napi::Number>().Int32Value();
-        const auto& shape = a->shape();
-        int ndim = static_cast<int>(shape.size());
+        if (axis < 0) axis += ndim;
 
         if (axis < 0 || axis >= ndim) {
             Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
@@ -931,9 +938,18 @@ Napi::Value Sum(const Napi::CallbackInfo& info) {
             int64_t cols = shape[1];
 
             if (axis == 0) {
-                // Sum along rows -> result has shape [cols]
-                Napi::Array jsResultShape = Napi::Array::New(env, 1);
-                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(cols)));
+                // Sum along rows -> result has shape [cols] or [1, cols] if keepdims
+                std::vector<int64_t> resultShape;
+                if (keepdims) {
+                    resultShape = {1, cols};
+                } else {
+                    resultShape = {cols};
+                }
+
+                Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+                for (size_t i = 0; i < resultShape.size(); i++) {
+                    jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+                }
 
                 Napi::Object result = NativeNDArray::constructor.New({
                     jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
@@ -956,9 +972,18 @@ Napi::Value Sum(const Napi::CallbackInfo& info) {
                 return result;
 
             } else { // axis == 1
-                // Sum along columns -> result has shape [rows]
-                Napi::Array jsResultShape = Napi::Array::New(env, 1);
-                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+                // Sum along columns -> result has shape [rows] or [rows, 1] if keepdims
+                std::vector<int64_t> resultShapeVec;
+                if (keepdims) {
+                    resultShapeVec = {rows, 1};
+                } else {
+                    resultShapeVec = {rows};
+                }
+
+                Napi::Array jsResultShape = Napi::Array::New(env, resultShapeVec.size());
+                for (size_t i = 0; i < resultShapeVec.size(); i++) {
+                    jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShapeVec[i])));
+                }
 
                 Napi::Object result = NativeNDArray::constructor.New({
                     jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
@@ -984,10 +1009,14 @@ Napi::Value Sum(const Napi::CallbackInfo& info) {
         }
 
         // Generic N-dimensional case (fallback)
-        // Compute result shape (remove the axis dimension)
+        // Compute result shape: with keepdims, replace axis dim with 1; without, remove it
         std::vector<int64_t> resultShape;
         for (int i = 0; i < ndim; i++) {
-            if (i != axis) {
+            if (i == axis) {
+                if (keepdims) {
+                    resultShape.push_back(1);
+                }
+            } else {
                 resultShape.push_back(shape[i]);
             }
         }
@@ -1075,12 +1104,19 @@ Napi::Value Max(const Napi::CallbackInfo& info) {
     NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
     double* data = static_cast<double*>(a->data());
     int64_t size = a->size();
+    const auto& shape = a->shape();
+    int ndim = static_cast<int>(shape.size());
+
+    // Check for keepdims parameter (3rd argument)
+    bool keepdims = false;
+    if (info.Length() >= 3 && info[2].IsBoolean()) {
+        keepdims = info[2].As<Napi::Boolean>().Value();
+    }
 
     // Check for axis parameter
     if (info.Length() >= 2 && !info[1].IsUndefined()) {
         int axis = info[1].As<Napi::Number>().Int32Value();
-        const auto& shape = a->shape();
-        int ndim = static_cast<int>(shape.size());
+        if (axis < 0) axis += ndim;
 
         if (axis < 0 || axis >= ndim) {
             Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
@@ -1093,9 +1129,18 @@ Napi::Value Max(const Napi::CallbackInfo& info) {
             int64_t cols = shape[1];
 
             if (axis == 0) {
-                // Max along rows -> result has shape [cols]
-                Napi::Array jsResultShape = Napi::Array::New(env, 1);
-                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(cols)));
+                // Max along rows -> result has shape [cols] or [1, cols] if keepdims
+                std::vector<int64_t> resultShape;
+                if (keepdims) {
+                    resultShape = {1, cols};
+                } else {
+                    resultShape = {cols};
+                }
+
+                Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+                for (size_t i = 0; i < resultShape.size(); i++) {
+                    jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+                }
 
                 Napi::Object result = NativeNDArray::constructor.New({
                     jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
@@ -1118,9 +1163,18 @@ Napi::Value Max(const Napi::CallbackInfo& info) {
                 return result;
 
             } else { // axis == 1
-                // Max along columns -> result has shape [rows]
-                Napi::Array jsResultShape = Napi::Array::New(env, 1);
-                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+                // Max along columns -> result has shape [rows] or [rows, 1] if keepdims
+                std::vector<int64_t> resultShape;
+                if (keepdims) {
+                    resultShape = {rows, 1};
+                } else {
+                    resultShape = {rows};
+                }
+
+                Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+                for (size_t i = 0; i < resultShape.size(); i++) {
+                    jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+                }
 
                 Napi::Object result = NativeNDArray::constructor.New({
                     jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
@@ -1174,12 +1228,19 @@ Napi::Value Min(const Napi::CallbackInfo& info) {
     NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
     double* data = static_cast<double*>(a->data());
     int64_t size = a->size();
+    const auto& shape = a->shape();
+    int ndim = static_cast<int>(shape.size());
+
+    // Check for keepdims parameter (3rd argument)
+    bool keepdims = false;
+    if (info.Length() >= 3 && info[2].IsBoolean()) {
+        keepdims = info[2].As<Napi::Boolean>().Value();
+    }
 
     // Check for axis parameter
     if (info.Length() >= 2 && !info[1].IsUndefined()) {
         int axis = info[1].As<Napi::Number>().Int32Value();
-        const auto& shape = a->shape();
-        int ndim = static_cast<int>(shape.size());
+        if (axis < 0) axis += ndim;
 
         if (axis < 0 || axis >= ndim) {
             Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
@@ -1192,9 +1253,18 @@ Napi::Value Min(const Napi::CallbackInfo& info) {
             int64_t cols = shape[1];
 
             if (axis == 0) {
-                // Min along rows -> result has shape [cols]
-                Napi::Array jsResultShape = Napi::Array::New(env, 1);
-                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(cols)));
+                // Min along rows -> result has shape [cols] or [1, cols] if keepdims
+                std::vector<int64_t> resultShape;
+                if (keepdims) {
+                    resultShape = {1, cols};
+                } else {
+                    resultShape = {cols};
+                }
+
+                Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+                for (size_t i = 0; i < resultShape.size(); i++) {
+                    jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+                }
 
                 Napi::Object result = NativeNDArray::constructor.New({
                     jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
@@ -1217,9 +1287,18 @@ Napi::Value Min(const Napi::CallbackInfo& info) {
                 return result;
 
             } else { // axis == 1
-                // Min along columns -> result has shape [rows]
-                Napi::Array jsResultShape = Napi::Array::New(env, 1);
-                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+                // Min along columns -> result has shape [rows] or [rows, 1] if keepdims
+                std::vector<int64_t> resultShape;
+                if (keepdims) {
+                    resultShape = {rows, 1};
+                } else {
+                    resultShape = {rows};
+                }
+
+                Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+                for (size_t i = 0; i < resultShape.size(); i++) {
+                    jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+                }
 
                 Napi::Object result = NativeNDArray::constructor.New({
                     jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
@@ -1802,12 +1881,19 @@ Napi::Value Mean(const Napi::CallbackInfo& info) {
     NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
     double* data = static_cast<double*>(a->data());
     int64_t size = a->size();
+    const auto& shape = a->shape();
+    int ndim = static_cast<int>(shape.size());
+
+    // Check for keepdims parameter (3rd argument)
+    bool keepdims = false;
+    if (info.Length() >= 3 && info[2].IsBoolean()) {
+        keepdims = info[2].As<Napi::Boolean>().Value();
+    }
 
     // Check for axis parameter
     if (info.Length() >= 2 && !info[1].IsUndefined()) {
         int axis = info[1].As<Napi::Number>().Int32Value();
-        const auto& shape = a->shape();
-        int ndim = static_cast<int>(shape.size());
+        if (axis < 0) axis += ndim;
 
         if (axis < 0 || axis >= ndim) {
             Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
@@ -1822,9 +1908,18 @@ Napi::Value Mean(const Napi::CallbackInfo& info) {
             int64_t cols = shape[1];
 
             if (axis == 0) {
-                // Mean along rows -> result has shape [cols]
-                Napi::Array jsResultShape = Napi::Array::New(env, 1);
-                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(cols)));
+                // Mean along rows -> result has shape [cols] or [1, cols] if keepdims
+                std::vector<int64_t> resultShape;
+                if (keepdims) {
+                    resultShape = {1, cols};
+                } else {
+                    resultShape = {cols};
+                }
+
+                Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+                for (size_t i = 0; i < resultShape.size(); i++) {
+                    jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+                }
 
                 Napi::Object result = NativeNDArray::constructor.New({
                     jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
@@ -1857,9 +1952,18 @@ Napi::Value Mean(const Napi::CallbackInfo& info) {
                 return result;
 
             } else { // axis == 1
-                // Mean along columns -> result has shape [rows]
-                Napi::Array jsResultShape = Napi::Array::New(env, 1);
-                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+                // Mean along columns -> result has shape [rows] or [rows, 1] if keepdims
+                std::vector<int64_t> resultShapeVec;
+                if (keepdims) {
+                    resultShapeVec = {rows, 1};
+                } else {
+                    resultShapeVec = {rows};
+                }
+
+                Napi::Array jsResultShape = Napi::Array::New(env, resultShapeVec.size());
+                for (size_t i = 0; i < resultShapeVec.size(); i++) {
+                    jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShapeVec[i])));
+                }
 
                 Napi::Object result = NativeNDArray::constructor.New({
                     jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
@@ -1885,10 +1989,14 @@ Napi::Value Mean(const Napi::CallbackInfo& info) {
         }
 
         // Generic N-dimensional case (fallback)
-        // Compute result shape (remove the axis dimension)
+        // Compute result shape: with keepdims, replace axis dim with 1; without, remove it
         std::vector<int64_t> resultShape;
         for (int i = 0; i < ndim; i++) {
-            if (i != axis) {
+            if (i == axis) {
+                if (keepdims) {
+                    resultShape.push_back(1);
+                }
+            } else {
                 resultShape.push_back(shape[i]);
             }
         }
