@@ -211,6 +211,7 @@ Prebuilt binaries are included - no compiler required for end users.
 
 - Node.js >= 22.0.0
 - pnpm
+- Python 3 (for NumPy conformity tests)
 - CMake >= 3.15
 - C++ compiler (clang, gcc, or MSVC)
 - BLAS/LAPACK development libraries
@@ -220,11 +221,18 @@ Prebuilt binaries are included - no compiler required for end users.
 ```bash
 git clone https://github.com/sebastian-software/numpy-node.git
 cd numpy-node
-pnpm install
+pnpm install      # Also creates .venv and installs NumPy for conformity tests
 pnpm build:native
 pnpm build
 pnpm test
 ```
+
+The `pnpm install` command automatically:
+
+1. Installs Node.js dependencies
+2. Creates a Python virtual environment (`.venv`)
+3. Installs the latest NumPy in the venv
+4. Generates reference values for conformity tests
 
 ### Scripts
 
@@ -237,6 +245,19 @@ pnpm test
 | `pnpm test:coverage` | Run tests with coverage     |
 | `pnpm lint`          | Run ESLint                  |
 | `pnpm typecheck`     | Run TypeScript type checker |
+
+### NumPy Conformity Tests
+
+We verify compatibility against the latest NumPy version:
+
+- **CI**: Generates fresh reference values from current NumPy on every run
+- **Local**: `pnpm install` sets up a `.venv` with NumPy automatically
+
+To regenerate reference values manually:
+
+```bash
+.venv/bin/python3 scripts/generate_numpy_reference.py
+```
 
 ## Architecture
 

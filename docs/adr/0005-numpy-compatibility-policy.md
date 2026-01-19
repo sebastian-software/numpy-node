@@ -34,9 +34,11 @@ This means:
 Before merging any new function or modification:
 
 1. **Create NumPy verification test**: Document the exact NumPy command and expected output
-2. **Run verification script**: Use `scripts/generate_numpy_reference.py` to generate reference values
-3. **Include NumPy version in tests**: Document which NumPy version was used for verification
+2. **Add to verification script**: Add test cases to `scripts/generate_numpy_reference.py`
+3. **Add conformity test**: Add corresponding test in `tests/numpy-conformity.test.ts`
 4. **Test edge cases**: Verify behavior with edge cases matches NumPy
+
+**Note:** Reference values are generated fresh from the latest NumPy version on every CI run and `pnpm install`. They are NOT committed to git.
 
 ### 3. Test Format
 

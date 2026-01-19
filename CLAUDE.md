@@ -164,20 +164,39 @@ it('should match NumPy greater()', () => {
 });
 ```
 
-### NumPy Conformity CI
+### NumPy Conformity Testing
 
-The CI runs automated NumPy conformity checks on every PR:
+We verify compatibility against the **latest NumPy version** (not a frozen snapshot).
 
-1. **`scripts/generate_numpy_reference.py`** - Generates `numpy_reference.json` with expected values from actual NumPy
-2. **`tests/numpy-conformity.test.ts`** - Compares numpy-node output against reference values
-3. **CI Job** - Regenerates reference values from latest NumPy and runs conformity tests
+#### How It Works
 
-To add new conformity tests:
+- **`scripts/generate_numpy_reference.py`** - Generates `numpy_reference.json` from current NumPy
+- **`tests/numpy-conformity.test.ts`** - Compares numpy-node output against reference values
+- **`scripts/numpy_reference.json`** - NOT committed to git (generated fresh each time)
 
-1. Add test case to `generate_numpy_reference.py`
-2. Regenerate: `python3 scripts/generate_numpy_reference.py`
-3. Add corresponding test in `numpy-conformity.test.ts`
-4. Run tests: `pnpm test -- tests/numpy-conformity.test.ts`
+#### Local Development
+
+`pnpm install` automatically:
+
+1. Creates `.venv` (Python virtual environment)
+2. Installs latest NumPy in the venv
+3. Generates reference values
+
+To regenerate manually:
+
+```bash
+.venv/bin/python3 scripts/generate_numpy_reference.py
+```
+
+#### CI
+
+The CI job regenerates reference values from the latest NumPy on every run, ensuring we always test against current NumPy behavior.
+
+#### Adding New Conformity Tests
+
+1. Add test case to `scripts/generate_numpy_reference.py`
+2. Add corresponding test in `tests/numpy-conformity.test.ts`
+3. Run locally: `pnpm test -- tests/numpy-conformity.test.ts`
 
 ### Architecture Decision Record
 
