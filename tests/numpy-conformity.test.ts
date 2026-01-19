@@ -884,9 +884,62 @@ describe('Completeness Check', () => {
     const allTested = Object.values(TESTED_FUNCTIONS).flat();
     const coverage = (allTested.length / allRequired.length) * 100;
 
-    console.log(
-      `\nNumPy Conformity Coverage: ${String(allTested.length)}/${String(allRequired.length)} functions (${coverage.toFixed(1)}%)`
-    );
+    // NumPy functions NOT YET implemented (from MISSING_FEATURES.md)
+    const MISSING_FROM_NUMPY = [
+      // Tier 1 - Essential
+      'argmin',
+      'argmax',
+      'clip',
+      'where',
+      'concatenate',
+      'stack',
+      // Tier 2 - Very common
+      'cumsum',
+      'cumprod',
+      'diff',
+      'sort',
+      'argsort',
+      'unique',
+      // Tier 3 - Common
+      'round',
+      'floor',
+      'ceil',
+      'searchsorted',
+      'tile',
+      'repeat',
+      'squeeze',
+      'expand_dims',
+      'vstack',
+      'hstack',
+      // Tier 4 - Useful
+      'flip',
+      'rot90',
+      'sign',
+      'mod',
+      'allclose',
+      'isclose',
+      'nonzero',
+      'split',
+      // Tier 5 - Advanced
+      'fft',
+      'ifft',
+      'rfft',
+      'einsum',
+    ];
+
+    const totalImplemented = allTested.length;
+    const totalMissing = MISSING_FROM_NUMPY.length;
+    const totalNumPy = totalImplemented + totalMissing;
+    const overallCoverage = (totalImplemented / totalNumPy) * 100;
+
+    console.log(`\n${'='.repeat(50)}`);
+    console.log('NumPy Conformity Report');
+    console.log('='.repeat(50));
+    console.log(`Implemented & Tested: ${String(totalImplemented)} functions`);
+    console.log(`Missing from NumPy:   ${String(totalMissing)} functions`);
+    console.log(`Overall Coverage:     ${overallCoverage.toFixed(1)}% of core NumPy API`);
+    console.log('='.repeat(50));
+    console.log(`Test Coverage:        ${coverage.toFixed(1)}% of implemented functions\n`);
 
     // This test passes but logs coverage for visibility
     expect(allTested.length).toBeGreaterThanOrEqual(allRequired.length);
