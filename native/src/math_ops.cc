@@ -368,6 +368,33 @@ Napi::Value Add(const Napi::CallbackInfo& info) {
         return result;
     }
 
+    // Fast path: 2D + 1D broadcasting (common in ML: add bias to each row)
+    // Shape (M, N) + (N,) -> broadcast along rows
+    const auto& shapeA = a->shape();
+    const auto& shapeB = b->shape();
+    if (shapeA.size() == 2 && shapeB.size() == 1 && shapeA[1] == shapeB[0]) {
+        int64_t rows = shapeA[0];
+        int64_t cols = shapeA[1];
+        double* dataA = static_cast<double*>(a->data());
+        double* dataB = static_cast<double*>(b->data());
+
+        Napi::Array jsShape = Napi::Array::New(env, 2);
+        jsShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+        jsShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(cols)));
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* dataC = static_cast<double*>(c->data());
+
+        // Add the 1D vector to each row
+        for (int64_t row = 0; row < rows; row++) {
+            vDSP_vaddD(dataA + row * cols, 1, dataB, 1, dataC + row * cols, 1, cols);
+        }
+        return result;
+    }
+
     // Different shapes - fall back to broadcasting implementation
     return BinaryOp(info, [](double x, double y) { return x + y; });
 #else
@@ -504,6 +531,33 @@ Napi::Value Multiply(const Napi::CallbackInfo& info) {
         vDSP_vmulD(static_cast<double*>(a->data()), 1,
                    static_cast<double*>(b->data()), 1,
                    static_cast<double*>(c->data()), 1, a->size());
+        return result;
+    }
+
+    // Fast path: 2D * 1D broadcasting (common in ML: scale by weights)
+    // Shape (M, N) * (N,) -> broadcast along rows
+    const auto& shapeA = a->shape();
+    const auto& shapeB = b->shape();
+    if (shapeA.size() == 2 && shapeB.size() == 1 && shapeA[1] == shapeB[0]) {
+        int64_t rows = shapeA[0];
+        int64_t cols = shapeA[1];
+        double* dataA = static_cast<double*>(a->data());
+        double* dataB = static_cast<double*>(b->data());
+
+        Napi::Array jsShape = Napi::Array::New(env, 2);
+        jsShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+        jsShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(cols)));
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* dataC = static_cast<double*>(c->data());
+
+        // Multiply each row by the 1D vector
+        for (int64_t row = 0; row < rows; row++) {
+            vDSP_vmulD(dataA + row * cols, 1, dataB, 1, dataC + row * cols, 1, cols);
+        }
         return result;
     }
 
