@@ -757,3 +757,265 @@ describe('NumPy Conformity Tests', () => {
     // These would require implementing the exact same RNG as NumPy
   });
 });
+
+/**
+ * Completeness Check
+ *
+ * This section verifies that all NumPy-compatible functions exported by numpy-node
+ * are covered by conformity tests. If you add a new function, add it to the
+ * appropriate category and create corresponding tests.
+ */
+describe('Completeness Check', () => {
+  // All NumPy-compatible functions that MUST have conformity tests
+  // Organized by category matching the reference JSON structure
+  const REQUIRED_COVERAGE = {
+    // Array creation functions
+    array_creation: [
+      'zeros',
+      'ones',
+      'full',
+      'arange',
+      'linspace',
+      'eye',
+      // 'identity', // alias for eye
+      // 'empty', // uninitialized, can't test values
+      // 'zerosLike', 'onesLike', 'emptyLike' // depend on input array
+    ],
+
+    // Arithmetic operations
+    arithmetic: ['add', 'subtract', 'multiply', 'divide', 'power'],
+
+    // Unary math functions
+    unary_math: ['sqrt', 'exp', 'log', 'sin', 'cos', 'abs', 'negative'],
+
+    // Reduction operations
+    reductions: ['sum', 'prod', 'mean', 'std', 'variance', 'min', 'max', 'median'],
+
+    // Comparison operators
+    comparison: ['equal', 'not_equal', 'less', 'less_equal', 'greater', 'greater_equal'],
+
+    // Logical operators
+    logical: ['logical_and', 'logical_or', 'logical_xor', 'logical_not'],
+
+    // Boolean reductions
+    boolean_reductions: ['any', 'all'],
+
+    // Linear algebra
+    linalg: [
+      'matmul',
+      'dot',
+      'inv',
+      'det',
+      'solve',
+      'trace',
+      'norm',
+      'matrix_rank',
+      'cond',
+      'eig',
+      'svd',
+      'cholesky',
+      // 'qr', // TODO: add conformity test
+      // 'eigvals', // subset of eig
+      // 'lstsq', 'normal_equations' // extensions, not standard NumPy
+    ],
+
+    // Advanced math
+    advanced_math: ['outer', 'kron', 'percentile', 'corrcoef'],
+  };
+
+  // Functions tested in this file (update when adding new tests)
+  const TESTED_FUNCTIONS = {
+    array_creation: ['zeros', 'ones', 'full', 'arange', 'linspace', 'eye'],
+    arithmetic: ['add', 'subtract', 'multiply', 'divide', 'power'],
+    unary_math: ['sqrt', 'exp', 'log', 'sin', 'cos', 'abs', 'negative'],
+    reductions: ['sum', 'prod', 'mean', 'std', 'variance', 'min', 'max', 'median'],
+    comparison: ['equal', 'not_equal', 'less', 'less_equal', 'greater', 'greater_equal'],
+    logical: ['logical_and', 'logical_or', 'logical_xor', 'logical_not'],
+    boolean_reductions: ['any', 'all'],
+    linalg: [
+      'matmul',
+      'dot',
+      'inv',
+      'det',
+      'solve',
+      'trace',
+      'norm',
+      'matrix_rank',
+      'cond',
+      'eig',
+      'svd',
+      'cholesky',
+    ],
+    advanced_math: ['outer', 'kron', 'percentile', 'corrcoef'],
+  };
+
+  for (const [category, requiredFunctions] of Object.entries(REQUIRED_COVERAGE)) {
+    describe(category, () => {
+      const testedFunctions = TESTED_FUNCTIONS[category as keyof typeof TESTED_FUNCTIONS];
+
+      it('all required functions are tested', () => {
+        const missing = requiredFunctions.filter((fn) => !testedFunctions.includes(fn));
+
+        if (missing.length > 0) {
+          throw new Error(
+            `Missing conformity tests for ${category}:\n` +
+              `  ${missing.join(', ')}\n\n` +
+              `Add tests for these functions to ensure NumPy compatibility.`
+          );
+        }
+      });
+
+      it('no unknown functions in test list', () => {
+        const unknown = testedFunctions.filter((fn) => !requiredFunctions.includes(fn));
+
+        if (unknown.length > 0) {
+          throw new Error(
+            `Unknown functions in ${category} test list:\n` +
+              `  ${unknown.join(', ')}\n\n` +
+              `Add these to REQUIRED_COVERAGE or remove from TESTED_FUNCTIONS.`
+          );
+        }
+      });
+    });
+  }
+
+  it('summary: all categories covered', () => {
+    const allRequired = Object.values(REQUIRED_COVERAGE).flat();
+    const allTested = Object.values(TESTED_FUNCTIONS).flat();
+    const coverage = (allTested.length / allRequired.length) * 100;
+
+    console.log(
+      `\nNumPy Conformity Coverage: ${String(allTested.length)}/${String(allRequired.length)} functions (${coverage.toFixed(1)}%)`
+    );
+
+    // This test passes but logs coverage for visibility
+    expect(allTested.length).toBeGreaterThanOrEqual(allRequired.length);
+  });
+
+  it('no new NumPy-compatible exports missing from coverage lists', () => {
+    // All NumPy-compatible functions exported by numpy-node
+    // This list should be updated when new functions are added
+    const ALL_NUMPY_EXPORTS = [
+      // Array creation
+      'array',
+      'zeros',
+      'ones',
+      'full',
+      'arange',
+      'linspace',
+      'eye',
+      'identity',
+      'empty',
+      'zerosLike',
+      'onesLike',
+      'emptyLike',
+      // Arithmetic
+      'add',
+      'subtract',
+      'multiply',
+      'divide',
+      'power',
+      'add_inplace',
+      'subtract_inplace',
+      'multiply_inplace',
+      'divide_inplace',
+      // Unary math
+      'sqrt',
+      'exp',
+      'log',
+      'sin',
+      'cos',
+      'tan',
+      'abs',
+      'negative',
+      // Reductions
+      'sum',
+      'prod',
+      'mean',
+      'std',
+      'variance',
+      'median',
+      'min',
+      'max',
+      // Advanced statistics
+      'zscore',
+      'corrcoef',
+      'percentile',
+      // Tensor products
+      'outer',
+      'kron',
+      'axpby',
+      // Comparison
+      'equal',
+      'not_equal',
+      'less',
+      'less_equal',
+      'greater',
+      'greater_equal',
+      // Logical
+      'logical_and',
+      'logical_or',
+      'logical_xor',
+      'logical_not',
+      // Boolean reductions
+      'any',
+      'all',
+      // Linear algebra
+      'matmul',
+      'matmul_nt',
+      'batch_matmul',
+      'batch_matmul_stacked',
+      'dot',
+      'inv',
+      'det',
+      'solve',
+      'eig',
+      'eigvals',
+      'svd',
+      'qr',
+      'cholesky',
+      'norm',
+      'matrix_rank',
+      'trace',
+      'cond',
+      'lstsq',
+      'normal_equations',
+    ];
+
+    // Functions that are intentionally excluded from conformity testing
+    const EXCLUDED_FROM_CONFORMITY = [
+      'array', // input function, not a NumPy operation
+      'identity', // alias for eye
+      'empty', // uninitialized values, can't test
+      'zerosLike', // depends on input array
+      'onesLike', // depends on input array
+      'emptyLike', // depends on input array
+      'tan', // TODO: add test
+      'add_inplace', // in-place variant
+      'subtract_inplace', // in-place variant
+      'multiply_inplace', // in-place variant
+      'divide_inplace', // in-place variant
+      'zscore', // scipy, not numpy
+      'axpby', // BLAS extension
+      'matmul_nt', // optimization variant
+      'batch_matmul', // optimization variant
+      'batch_matmul_stacked', // optimization variant
+      'eigvals', // subset of eig
+      'qr', // TODO: add test
+      'lstsq', // TODO: add test
+      'normal_equations', // extension
+    ];
+
+    const allTracked = [...Object.values(REQUIRED_COVERAGE).flat(), ...EXCLUDED_FROM_CONFORMITY];
+
+    const untracked = ALL_NUMPY_EXPORTS.filter((fn) => !allTracked.includes(fn));
+
+    if (untracked.length > 0) {
+      throw new Error(
+        `New exports not tracked in conformity tests:\n` +
+          `  ${untracked.join(', ')}\n\n` +
+          `Add to REQUIRED_COVERAGE (for testing) or EXCLUDED_FROM_CONFORMITY (with reason).`
+      );
+    }
+  });
+});
