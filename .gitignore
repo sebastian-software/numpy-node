@@ -46,3 +46,6 @@ compile_commands.json
 *.dylib
 *.so
 *.dll
+
+# Generated test data (regenerate with: python3 scripts/generate_numpy_reference.py)
+scripts/numpy_reference.json
