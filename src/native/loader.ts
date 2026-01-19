@@ -101,6 +101,7 @@ export interface LinalgModule {
   matmul(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
   matmul_nt(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
   batch_matmul(as: NativeNDArray[], bs: NativeNDArray[]): NativeNDArray[];
+  batch_matmul_stacked(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
   dot(a: NativeNDArray, b: NativeNDArray): NativeNDArray | number;
   inv(a: NativeNDArray): NativeNDArray;
   det(a: NativeNDArray): number;

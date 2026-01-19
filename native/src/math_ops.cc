@@ -2615,20 +2615,7 @@ Napi::Value Kron(const Napi::CallbackInfo& info) {
 
     // Compute Kronecker product with cache-friendly access pattern
     // Write each result row left-to-right for optimal cache locality
-#if defined(USE_ACCELERATE)
-    // Use vDSP_vsmulD for SIMD vector-scalar multiply
-    for (int64_t i = 0; i < am; i++) {
-        const double* aRow = aData + i * an;
-        for (int64_t k = 0; k < bm; k++) {
-            const double* bRow = bData + k * bn;
-            double* outRow = resultData + (i * bm + k) * resultCols;
-            for (int64_t j = 0; j < an; j++) {
-                double* outBlock = outRow + j * bn;
-                vDSP_vsmulD(bRow, 1, &aRow[j], outBlock, 1, static_cast<vDSP_Length>(bn));
-            }
-        }
-    }
-#else
+    // Simple loops with unrolling - compiler auto-vectorizes this well
     for (int64_t i = 0; i < am; i++) {
         const double* aRow = aData + i * an;
         for (int64_t k = 0; k < bm; k++) {
@@ -2637,13 +2624,17 @@ Napi::Value Kron(const Napi::CallbackInfo& info) {
             for (int64_t j = 0; j < an; j++) {
                 double aij = aRow[j];
                 double* outBlock = outRow + j * bn;
-                // Unrolled loop - compiler will auto-vectorize
+                // Unroll by 8 for better auto-vectorization
                 int64_t l = 0;
-                for (; l + 3 < bn; l += 4) {
+                for (; l + 7 < bn; l += 8) {
                     outBlock[l]     = aij * bRow[l];
                     outBlock[l + 1] = aij * bRow[l + 1];
                     outBlock[l + 2] = aij * bRow[l + 2];
                     outBlock[l + 3] = aij * bRow[l + 3];
+                    outBlock[l + 4] = aij * bRow[l + 4];
+                    outBlock[l + 5] = aij * bRow[l + 5];
+                    outBlock[l + 6] = aij * bRow[l + 6];
+                    outBlock[l + 7] = aij * bRow[l + 7];
                 }
                 for (; l < bn; l++) {
                     outBlock[l] = aij * bRow[l];
@@ -2651,7 +2642,6 @@ Napi::Value Kron(const Napi::CallbackInfo& info) {
             }
         }
     }
-#endif
 
     return result;
 }

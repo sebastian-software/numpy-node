@@ -78,6 +78,7 @@ export {
   matmul,
   matmul_nt,
   batch_matmul,
+  batch_matmul_stacked,
   dot,
   inv,
   det,

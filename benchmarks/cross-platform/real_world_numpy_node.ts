@@ -14,7 +14,7 @@ import {
   divide,
   matmul,
   matmul_nt,
-  batch_matmul,
+  batch_matmul_stacked,
   dot,
   sqrt,
   exp,
@@ -726,20 +726,41 @@ function scenarioBatchMatmul() {
   /**
    * Batch matrix multiplication - multiple small matrices.
    * Common in attention mechanisms.
-   * Uses native batch_matmul to reduce N-API overhead.
+   * Uses batch_matmul_stacked with 3D arrays for minimal N-API overhead.
    */
-  // 32 matrices of 64x64
+  // 32 matrices of 64x64 - create as stacked 3D arrays
   const batchSize = 32;
-  const As: NDArray[] = [];
-  const Bs: NDArray[] = [];
+  const m = 64;
+  const n = 64;
+
+  // Create stacked 3D array [batch, m, n]
+  const aData: number[][][] = [];
+  const bData: number[][][] = [];
   for (let i = 0; i < batchSize; i++) {
-    As.push(randomMatrix(64, 64));
-    Bs.push(randomMatrix(64, 64));
+    const aMatrix: number[][] = [];
+    const bMatrix: number[][] = [];
+    for (let j = 0; j < m; j++) {
+      const aRow: number[] = [];
+      const bRow: number[] = [];
+      for (let k = 0; k < n; k++) {
+        const u1 = Math.random();
+        const u2 = Math.random();
+        aRow.push(Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2));
+        bRow.push(Math.sqrt(-2 * Math.log(u1)) * Math.sin(2 * Math.PI * u2));
+      }
+      aMatrix.push(aRow);
+      bMatrix.push(bRow);
+    }
+    aData.push(aMatrix);
+    bData.push(bMatrix);
   }
 
+  const A = array(aData); // Shape: [32, 64, 64]
+  const B = array(bData); // Shape: [32, 64, 64]
+
   return function batchMM() {
-    // Single native call for all 32 matmuls
-    return batch_matmul(As, Bs);
+    // Single native call with one output array creation
+    return batch_matmul_stacked(A, B);
   };
 }
 
@@ -1069,6 +1090,727 @@ function scenarioKroneckerProduct() {
   };
 }
 
+// ============================================
+// Machine Learning / Deep Learning Scenarios
+// ============================================
+
+function scenarioBatchNormalization() {
+  /**
+   * Batch normalization: (x - mean) / sqrt(var + eps) * gamma + beta
+   * Common in CNNs and deep networks.
+   * Simplified version operating on 2D data.
+   */
+  // Flatten NCHW to 2D for our implementation: (N*H*W, C) = (256*32*32, 64) = (262144, 64)
+  const batchSize = 256;
+  const channels = 64;
+  const height = 32;
+  const width = 32;
+  const x = randomMatrix(batchSize * height * width, channels);
+  const gamma = randomVector(channels);
+  const beta = randomVector(channels);
+  const eps = 1e-5;
+
+  return function batchNorm() {
+    // Compute mean and var over the batch dimension (axis=0)
+    const μ = mean(x, 0) as NDArray;
+    const centered = subtract(x, μ);
+    const varData = mean(multiply(centered, centered), 0) as NDArray;
+    // x_norm = centered / sqrt(var + eps)
+    const stdVal = sqrt(add(varData, eps));
+    const xNorm = divide(centered, stdVal);
+    // Scale and shift: gamma * x_norm + beta
+    const out = affine(xNorm, gamma, beta);
+    return out;
+  };
+}
+
+function scenarioDropoutForward() {
+  /**
+   * Dropout forward pass - generate mask and apply.
+   * Common regularization technique.
+   */
+  const x = randomMatrix(1000, 512);
+  const p = 0.5; // dropout probability
+  const scale = 1 / (1 - p);
+
+  return function dropout() {
+    // Generate binary mask
+    const mask: number[][] = [];
+    for (let i = 0; i < 1000; i++) {
+      const row: number[] = [];
+      for (let j = 0; j < 512; j++) {
+        row.push(Math.random() > p ? 1 : 0);
+      }
+      mask.push(row);
+    }
+    const maskArr = array(mask);
+    // Apply mask and scale
+    const out = multiply(multiply(x, maskArr), scale);
+    return { out, mask: maskArr };
+  };
+}
+
+function scenarioXavierInit() {
+  /**
+   * Xavier/Glorot weight initialization for neural networks.
+   */
+  const layers: [number, number][] = [
+    [784, 512],
+    [512, 256],
+    [256, 128],
+    [128, 10],
+  ];
+
+  return function xavier() {
+    const weights: NDArray[] = [];
+    for (const [fanIn, fanOut] of layers) {
+      const std = Math.sqrt(2.0 / (fanIn + fanOut));
+      // Generate random matrix and scale
+      const W = randomMatrix(fanIn, fanOut);
+      weights.push(multiply(W, std));
+    }
+    return weights;
+  };
+}
+
+function scenarioAdamOptimizerStep() {
+  /**
+   * Adam optimizer update step.
+   * Most popular optimizer for deep learning.
+   */
+  const nParams = 100000;
+  const params = randomVector(nParams);
+  const grads = randomVector(nParams);
+  let m = zeros([nParams]); // First moment
+  let v = zeros([nParams]); // Second moment
+  const lr = 0.001;
+  const beta1 = 0.9;
+  const beta2 = 0.999;
+  const eps = 1e-8;
+  let t = 1;
+
+  return function adamStep() {
+    // Update biased moments: m = beta1 * m + (1 - beta1) * grads
+    m = add(multiply(m, beta1), multiply(grads, 1 - beta1));
+    // v = beta2 * v + (1 - beta2) * grads^2
+    v = add(multiply(v, beta2), multiply(multiply(grads, grads), 1 - beta2));
+    // Bias correction
+    const mHat = divide(m, 1 - Math.pow(beta1, t));
+    const vHat = divide(v, 1 - Math.pow(beta2, t));
+    // Update params: params - lr * m_hat / (sqrt(v_hat) + eps)
+    const update = divide(mHat, add(sqrt(vHat), eps));
+    const newParams = subtract(params, multiply(update, lr));
+    t++;
+    return newParams;
+  };
+}
+
+function scenarioConfusionMatrix() {
+  /**
+   * Compute confusion matrix from predictions.
+   * Essential for classification evaluation.
+   */
+  const nSamples = 10000;
+  const nClasses = 10;
+  const yTrue: number[] = [];
+  const yPred: number[] = [];
+  for (let i = 0; i < nSamples; i++) {
+    yTrue.push(Math.floor(Math.random() * nClasses));
+    yPred.push(Math.floor(Math.random() * nClasses));
+  }
+
+  return function computeConfusion() {
+    const cm = new Float64Array(nClasses * nClasses);
+    for (let i = 0; i < nSamples; i++) {
+      cm[yTrue[i] * nClasses + yPred[i]]++;
+    }
+    return cm;
+  };
+}
+
+// ============================================
+// Statistics Scenarios
+// ============================================
+
+function scenarioBootstrapMean() {
+  /**
+   * Bootstrap resampling for confidence intervals.
+   * Common in statistical inference.
+   */
+  const data = randomVector(1000);
+  const dataArr = data.data as Float64Array;
+  const nBootstrap = 1000;
+  const n = 1000;
+
+  return function bootstrap() {
+    const means: number[] = [];
+    for (let i = 0; i < nBootstrap; i++) {
+      // Resample with replacement
+      let sum = 0;
+      for (let j = 0; j < n; j++) {
+        const idx = Math.floor(Math.random() * n);
+        sum += dataArr[idx];
+      }
+      means.push(sum / n);
+    }
+    // Sort and compute 95% CI
+    means.sort((a, b) => a - b);
+    const ciLow = means[Math.floor(nBootstrap * 0.025)];
+    const ciHigh = means[Math.floor(nBootstrap * 0.975)];
+    const meanOfMeans = means.reduce((a, b) => a + b, 0) / nBootstrap;
+    return { mean: meanOfMeans, ciLow, ciHigh };
+  };
+}
+
+function scenarioWelchTTest() {
+  /**
+   * Welch's t-test for comparing two samples.
+   */
+  const sample1 = randomVector(500);
+  const sample2 = randomVector(600);
+  const s1 = sample1.data as Float64Array;
+  const s2 = sample2.data as Float64Array;
+  const n1 = 500;
+  const n2 = 600;
+
+  // Pre-scale sample1 by 1.5 and add 2.0, sample2 by 2.0 and add 2.5
+  for (let i = 0; i < n1; i++) s1[i] = s1[i] * 1.5 + 2.0;
+  for (let i = 0; i < n2; i++) s2[i] = s2[i] * 2.0 + 2.5;
+
+  return function ttest() {
+    // Compute means
+    let sum1 = 0,
+      sum2 = 0;
+    for (let i = 0; i < n1; i++) sum1 += s1[i];
+    for (let i = 0; i < n2; i++) sum2 += s2[i];
+    const mean1 = sum1 / n1;
+    const mean2 = sum2 / n2;
+
+    // Compute variances
+    let var1 = 0,
+      var2 = 0;
+    for (let i = 0; i < n1; i++) var1 += (s1[i] - mean1) ** 2;
+    for (let i = 0; i < n2; i++) var2 += (s2[i] - mean2) ** 2;
+    var1 /= n1 - 1;
+    var2 /= n2 - 1;
+
+    // Welch's t-statistic
+    const se = Math.sqrt(var1 / n1 + var2 / n2);
+    const tStat = (mean1 - mean2) / se;
+
+    // Degrees of freedom (Welch-Satterthwaite)
+    const num = (var1 / n1 + var2 / n2) ** 2;
+    const denom = (var1 / n1) ** 2 / (n1 - 1) + (var2 / n2) ** 2 / (n2 - 1);
+    const df = num / denom;
+
+    return { tStat, df };
+  };
+}
+
+function scenarioKDE() {
+  /**
+   * Kernel Density Estimation with Gaussian kernel.
+   */
+  const data = randomVector(1000);
+  const dataArr = data.data as Float64Array;
+  const nEval = 200;
+  const xEval: number[] = [];
+  for (let i = 0; i < nEval; i++) {
+    xEval.push(-4 + (8 * i) / (nEval - 1));
+  }
+  const bandwidth = 0.3;
+  const n = 1000;
+  const normConst = n * bandwidth * Math.sqrt(2 * Math.PI);
+
+  return function kde() {
+    const density: number[] = new Array(nEval);
+    for (let i = 0; i < nEval; i++) {
+      let sum = 0;
+      for (let j = 0; j < n; j++) {
+        const u = (xEval[i] - dataArr[j]) / bandwidth;
+        sum += Math.exp(-0.5 * u * u);
+      }
+      density[i] = sum / normConst;
+    }
+    return density;
+  };
+}
+
+function scenarioMovingWindowStats() {
+  /**
+   * Moving window statistics: mean, std, min, max.
+   * Common in time series analysis.
+   */
+  const data = randomVector(10000);
+  const dataArr = data.data as Float64Array;
+  const window = 100;
+  const n = 10000 - window + 1;
+
+  return function movingStats() {
+    const means = new Float64Array(n);
+    const stds = new Float64Array(n);
+    const mins = new Float64Array(n);
+    const maxs = new Float64Array(n);
+
+    for (let i = 0; i < n; i++) {
+      let sum = 0,
+        sumSq = 0;
+      let minVal = dataArr[i],
+        maxVal = dataArr[i];
+      for (let j = 0; j < window; j++) {
+        const val = dataArr[i + j];
+        sum += val;
+        sumSq += val * val;
+        if (val < minVal) minVal = val;
+        if (val > maxVal) maxVal = val;
+      }
+      const mean = sum / window;
+      means[i] = mean;
+      stds[i] = Math.sqrt(sumSq / window - mean * mean);
+      mins[i] = minVal;
+      maxs[i] = maxVal;
+    }
+
+    return { means, stds, mins, maxs };
+  };
+}
+
+// ============================================
+// Signal Processing / Physics Scenarios
+// ============================================
+
+function scenarioAutocorrelation() {
+  /**
+   * Autocorrelation of a time series.
+   * Important for time series analysis.
+   */
+  const signal = randomVector(5000);
+  const signalArr = signal.data as Float64Array;
+  const n = 5000;
+  const maxLag = 100;
+
+  // Pre-compute mean and variance
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += signalArr[i];
+  const signalMean = sum / n;
+  let variance = 0;
+  for (let i = 0; i < n; i++) variance += (signalArr[i] - signalMean) ** 2;
+  variance /= n;
+
+  return function autocorr() {
+    const result = new Float64Array(maxLag);
+
+    for (let lag = 0; lag < maxLag; lag++) {
+      if (lag === 0) {
+        result[lag] = 1.0;
+      } else {
+        let sum = 0;
+        for (let i = 0; i < n - lag; i++) {
+          sum += (signalArr[i] - signalMean) * (signalArr[i + lag] - signalMean);
+        }
+        result[lag] = sum / ((n - lag) * variance);
+      }
+    }
+    return result;
+  };
+}
+
+function scenarioNBodyStep() {
+  /**
+   * N-body gravitational simulation step.
+   * Compute pairwise forces and update velocities.
+   */
+  const nBodies = 500;
+  const positions = randomMatrix(nBodies, 3);
+  const velocities = randomMatrix(nBodies, 3);
+  const massData: number[] = [];
+  for (let i = 0; i < nBodies; i++) {
+    massData.push(Math.random() + 0.1);
+  }
+  const masses = array(massData);
+  const G = 1.0;
+  const dt = 0.01;
+  const softening = 0.1;
+  const softening2 = softening * softening;
+
+  return function nbody() {
+    const pos = positions.data as Float64Array;
+    const vel = velocities.data as Float64Array;
+    const m = masses.data as Float64Array;
+    const accel = new Float64Array(nBodies * 3);
+
+    // Compute pairwise forces
+    for (let i = 0; i < nBodies; i++) {
+      const ix = pos[i * 3];
+      const iy = pos[i * 3 + 1];
+      const iz = pos[i * 3 + 2];
+      let ax = 0,
+        ay = 0,
+        az = 0;
+
+      for (let j = 0; j < nBodies; j++) {
+        if (i === j) continue;
+        const dx = pos[j * 3] - ix;
+        const dy = pos[j * 3 + 1] - iy;
+        const dz = pos[j * 3 + 2] - iz;
+        const r2 = dx * dx + dy * dy + dz * dz + softening2;
+        const r3 = r2 * Math.sqrt(r2);
+        const factor = (G * m[j]) / r3;
+        ax += factor * dx;
+        ay += factor * dy;
+        az += factor * dz;
+      }
+      accel[i * 3] = ax;
+      accel[i * 3 + 1] = ay;
+      accel[i * 3 + 2] = az;
+    }
+
+    // Update velocities
+    const newVel = new Float64Array(nBodies * 3);
+    for (let i = 0; i < nBodies * 3; i++) {
+      newVel[i] = vel[i] + accel[i] * dt;
+    }
+    return newVel;
+  };
+}
+
+function scenarioHeatEquation() {
+  /**
+   * 2D heat equation using finite differences.
+   * Laplacian: d²T/dx² + d²T/dy²
+   */
+  const n = 100;
+  const T = randomMatrix(n, n);
+  const Tdata = T.data as Float64Array;
+  // Set boundary conditions to 0
+  for (let i = 0; i < n; i++) {
+    Tdata[i] = 0; // top row
+    Tdata[(n - 1) * n + i] = 0; // bottom row
+    Tdata[i * n] = 0; // left col
+    Tdata[i * n + n - 1] = 0; // right col
+  }
+  const alpha = 0.25;
+  const nSteps = 50;
+
+  return function heatStep() {
+    const TNew = new Float64Array(n * n);
+    for (let i = 0; i < n * n; i++) TNew[i] = Tdata[i];
+
+    for (let step = 0; step < nSteps; step++) {
+      // 5-point stencil Laplacian for interior points
+      for (let i = 1; i < n - 1; i++) {
+        for (let j = 1; j < n - 1; j++) {
+          const idx = i * n + j;
+          const laplacian =
+            TNew[(i - 1) * n + j] +
+            TNew[(i + 1) * n + j] +
+            TNew[i * n + j - 1] +
+            TNew[i * n + j + 1] -
+            4 * TNew[idx];
+          TNew[idx] += alpha * laplacian;
+        }
+      }
+    }
+    return TNew;
+  };
+}
+
+function scenarioMonteCarloPi() {
+  /**
+   * Monte Carlo estimation of Pi.
+   * Classic example of MC simulation.
+   */
+  const nSamples = 1000000;
+
+  return function monteCarlo() {
+    let inside = 0;
+    for (let i = 0; i < nSamples; i++) {
+      const x = Math.random();
+      const y = Math.random();
+      if (x * x + y * y <= 1.0) {
+        inside++;
+      }
+    }
+    const piEstimate = (4.0 * inside) / nSamples;
+    return piEstimate;
+  };
+}
+
+// ============================================
+// Finance Scenarios (Additional)
+// ============================================
+
+function scenarioBlackScholes() {
+  /**
+   * Black-Scholes option pricing.
+   */
+  const nOptions = 10000;
+  const S: number[] = []; // Stock price
+  const K = 100; // Strike price
+  const T: number[] = []; // Time to maturity
+  const r = 0.05; // Risk-free rate
+  const sigma: number[] = []; // Volatility
+
+  for (let i = 0; i < nOptions; i++) {
+    S.push(80 + Math.random() * 40); // 80-120
+    T.push(0.1 + Math.random() * 1.9); // 0.1-2.0
+    sigma.push(0.1 + Math.random() * 0.4); // 0.1-0.5
+  }
+
+  // Normal CDF approximation
+  function normCdf(x: number): number {
+    return 0.5 * (1 + Math.tanh(x * 0.7978845608));
+  }
+
+  return function blackScholes() {
+    const calls: number[] = new Array(nOptions);
+    for (let i = 0; i < nOptions; i++) {
+      const sqrtT = Math.sqrt(T[i]);
+      const d1 = (Math.log(S[i] / K) + (r + 0.5 * sigma[i] * sigma[i]) * T[i]) / (sigma[i] * sqrtT);
+      const d2 = d1 - sigma[i] * sqrtT;
+      calls[i] = S[i] * normCdf(d1) - K * Math.exp(-r * T[i]) * normCdf(d2);
+    }
+    return calls;
+  };
+}
+
+function scenarioVaRHistorical() {
+  /**
+   * Value at Risk using historical simulation.
+   */
+  const nDays = 1000;
+  const nAssets = 50;
+  const returns = randomMatrix(nDays, nAssets);
+  // Scale returns by 0.02
+  const returnsArr = returns.data as Float64Array;
+  for (let i = 0; i < nDays * nAssets; i++) {
+    returnsArr[i] *= 0.02;
+  }
+  // Normalize weights
+  const weights: number[] = [];
+  let wSum = 0;
+  for (let i = 0; i < nAssets; i++) {
+    const w = Math.random();
+    weights.push(w);
+    wSum += w;
+  }
+  for (let i = 0; i < nAssets; i++) weights[i] /= wSum;
+
+  const confidence = 0.95;
+
+  return function varCalc() {
+    // Portfolio returns
+    const portfolioReturns: number[] = new Array(nDays);
+    for (let i = 0; i < nDays; i++) {
+      let sum = 0;
+      for (let j = 0; j < nAssets; j++) {
+        sum += returnsArr[i * nAssets + j] * weights[j];
+      }
+      portfolioReturns[i] = sum;
+    }
+    // Sort returns
+    portfolioReturns.sort((a, b) => a - b);
+    // VaR at confidence level
+    const varIdx = Math.floor((1 - confidence) * nDays);
+    const varValue = -portfolioReturns[varIdx];
+    // Expected Shortfall (CVaR)
+    let cvarSum = 0;
+    for (let i = 0; i < varIdx; i++) {
+      cvarSum += portfolioReturns[i];
+    }
+    const cvar = -cvarSum / varIdx;
+    return { varValue, cvar };
+  };
+}
+
+function scenarioEWMAVolatility() {
+  /**
+   * Exponentially Weighted Moving Average volatility.
+   * Common in risk management.
+   */
+  const returns = randomVector(2000);
+  const returnsArr = returns.data as Float64Array;
+  // Scale by 0.02
+  for (let i = 0; i < 2000; i++) returnsArr[i] *= 0.02;
+  const lambdaParam = 0.94;
+
+  return function ewma() {
+    const n = 2000;
+    const variance = new Float64Array(n);
+    variance[0] = returnsArr[0] * returnsArr[0];
+
+    for (let i = 1; i < n; i++) {
+      variance[i] =
+        lambdaParam * variance[i - 1] + (1 - lambdaParam) * returnsArr[i - 1] * returnsArr[i - 1];
+    }
+
+    const volatility = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      volatility[i] = Math.sqrt(variance[i]);
+    }
+    return volatility;
+  };
+}
+
+// ============================================
+// Miscellaneous Scenarios
+// ============================================
+
+function scenarioMatrixFactorizationStep() {
+  /**
+   * Matrix factorization SGD step for recommender systems.
+   */
+  const nUsers = 1000;
+  const nItems = 500;
+  const nFactors = 50;
+  const nRatings = 10000;
+
+  // Latent factors
+  const P = randomMatrix(nUsers, nFactors);
+  const Q = randomMatrix(nItems, nFactors);
+  const PArr = P.data as Float64Array;
+  const QArr = Q.data as Float64Array;
+
+  // Sparse ratings
+  const users: number[] = [];
+  const items: number[] = [];
+  const ratings: number[] = [];
+  for (let i = 0; i < nRatings; i++) {
+    users.push(Math.floor(Math.random() * nUsers));
+    items.push(Math.floor(Math.random() * nItems));
+    ratings.push(Math.random() * 4 + 1); // 1-5 scale
+  }
+
+  const lr = 0.01;
+  const reg = 0.02;
+
+  return function mfStep() {
+    // Work on copies
+    const PNew = new Float64Array(nUsers * nFactors);
+    const QNew = new Float64Array(nItems * nFactors);
+    for (let i = 0; i < nUsers * nFactors; i++) PNew[i] = PArr[i] * 0.1;
+    for (let i = 0; i < nItems * nFactors; i++) QNew[i] = QArr[i] * 0.1;
+
+    for (let idx = 0; idx < nRatings; idx++) {
+      const u = users[idx];
+      const item = items[idx];
+      const r = ratings[idx];
+
+      // Compute prediction: P[u] @ Q[item]
+      let pred = 0;
+      for (let f = 0; f < nFactors; f++) {
+        pred += PNew[u * nFactors + f] * QNew[item * nFactors + f];
+      }
+      const error = r - pred;
+
+      // Update factors
+      for (let f = 0; f < nFactors; f++) {
+        const puf = PNew[u * nFactors + f];
+        const qif = QNew[item * nFactors + f];
+        PNew[u * nFactors + f] += lr * (error * qif - reg * puf);
+        QNew[item * nFactors + f] += lr * (error * puf - reg * qif);
+      }
+    }
+
+    return { PNew, QNew };
+  };
+}
+
+function scenarioTFIDF() {
+  /**
+   * TF-IDF computation for text processing.
+   */
+  const nDocs = 500;
+  const nTerms = 1000;
+  // Simulated term frequencies (sparse-ish, Poisson(2))
+  const tf = randomMatrix(nDocs, nTerms);
+  const tfArr = tf.data as Float64Array;
+  // Make it more like Poisson by taking abs and rounding
+  for (let i = 0; i < nDocs * nTerms; i++) {
+    tfArr[i] = Math.abs(Math.round(tfArr[i] * 2));
+  }
+
+  return function tfidf() {
+    // Term frequency normalization
+    const tfNorm = new Float64Array(nDocs * nTerms);
+    for (let d = 0; d < nDocs; d++) {
+      let sum = 0;
+      for (let t = 0; t < nTerms; t++) {
+        sum += tfArr[d * nTerms + t];
+      }
+      for (let t = 0; t < nTerms; t++) {
+        tfNorm[d * nTerms + t] = tfArr[d * nTerms + t] / (sum + 1e-10);
+      }
+    }
+
+    // Document frequency
+    const df = new Float64Array(nTerms);
+    for (let t = 0; t < nTerms; t++) {
+      for (let d = 0; d < nDocs; d++) {
+        if (tfArr[d * nTerms + t] > 0) df[t]++;
+      }
+    }
+
+    // Inverse document frequency
+    const idf = new Float64Array(nTerms);
+    for (let t = 0; t < nTerms; t++) {
+      idf[t] = Math.log(nDocs / (df[t] + 1));
+    }
+
+    // TF-IDF
+    const tfidfMatrix = new Float64Array(nDocs * nTerms);
+    for (let d = 0; d < nDocs; d++) {
+      for (let t = 0; t < nTerms; t++) {
+        tfidfMatrix[d * nTerms + t] = tfNorm[d * nTerms + t] * idf[t];
+      }
+    }
+
+    return tfidfMatrix;
+  };
+}
+
+function scenarioBilinearInterpolation() {
+  /**
+   * Bilinear interpolation for image resizing.
+   */
+  const srcH = 256,
+    srcW = 256;
+  const src = randomMatrix(srcH, srcW);
+  const srcArr = src.data as Float64Array;
+  const dstH = 512,
+    dstW = 512;
+
+  return function bilinear() {
+    const dst = new Float64Array(dstH * dstW);
+
+    const scaleY = srcH / dstH;
+    const scaleX = srcW / dstW;
+
+    for (let y = 0; y < dstH; y++) {
+      for (let x = 0; x < dstW; x++) {
+        const srcY = y * scaleY;
+        const srcX = x * scaleX;
+
+        const y0 = Math.floor(srcY);
+        const x0 = Math.floor(srcX);
+        const y1 = Math.min(y0 + 1, srcH - 1);
+        const x1 = Math.min(x0 + 1, srcW - 1);
+
+        const fy = srcY - y0;
+        const fx = srcX - x0;
+
+        dst[y * dstW + x] =
+          srcArr[y0 * srcW + x0] * (1 - fx) * (1 - fy) +
+          srcArr[y0 * srcW + x1] * fx * (1 - fy) +
+          srcArr[y1 * srcW + x0] * (1 - fx) * fy +
+          srcArr[y1 * srcW + x1] * fx * fy;
+      }
+    }
+
+    return dst;
+  };
+}
+
 function runBenchmarks(): BenchmarkResult[] {
   const results: BenchmarkResult[] = [];
 
@@ -1120,6 +1862,30 @@ function runBenchmarks(): BenchmarkResult[] {
     // Matrix Operations
     ['Outer Product (1k x 1k)', scenarioOuterProduct],
     ['Kronecker Product (50x50 ⊗ 20x20)', scenarioKroneckerProduct],
+    // Machine Learning / Deep Learning
+    ['Batch Normalization (256x64x32x32)', scenarioBatchNormalization],
+    ['Dropout Forward (1k x 512)', scenarioDropoutForward],
+    ['Xavier Init (4 layers)', scenarioXavierInit],
+    ['Adam Optimizer Step (100k params)', scenarioAdamOptimizerStep],
+    ['Confusion Matrix (10k samples)', scenarioConfusionMatrix],
+    // Statistics
+    ['Bootstrap Mean (1k samples, 1k resamples)', scenarioBootstrapMean],
+    ['Welch t-Test (500 vs 600)', scenarioWelchTTest],
+    ['KDE (1k points, 200 eval)', scenarioKDE],
+    ['Moving Window Stats (10k, w=100)', scenarioMovingWindowStats],
+    // Signal Processing / Physics
+    ['Autocorrelation (5k, lag=100)', scenarioAutocorrelation],
+    ['N-Body Step (500 bodies)', scenarioNBodyStep],
+    ['Heat Equation (100x100, 50 steps)', scenarioHeatEquation],
+    ['Monte Carlo Pi (1M samples)', scenarioMonteCarloPi],
+    // Finance (Additional)
+    ['Black-Scholes (10k options)', scenarioBlackScholes],
+    ['VaR Historical (1k days, 50 assets)', scenarioVaRHistorical],
+    ['EWMA Volatility (2k returns)', scenarioEWMAVolatility],
+    // Miscellaneous
+    ['Matrix Factorization Step (1k×500)', scenarioMatrixFactorizationStep],
+    ['TF-IDF (500 docs, 1k terms)', scenarioTFIDF],
+    ['Bilinear Interpolation (256→512)', scenarioBilinearInterpolation],
   ];
 
   for (const [name, scenarioFn] of scenarios) {

@@ -39,6 +39,18 @@ export function batch_matmul(as: NDArray[], bs: NDArray[]): NDArray[] {
 }
 
 /**
+ * Batch matrix multiplication with stacked 3D arrays.
+ * Much more efficient than batch_matmul as it only creates one output array.
+ *
+ * @param a 3D array with shape [batch, m, k]
+ * @param b 3D array with shape [batch, k, n]
+ * @returns 3D array with shape [batch, m, n]
+ */
+export function batch_matmul_stacked(a: NDArray, b: NDArray): NDArray {
+  return new NDArray(linalg.batch_matmul_stacked(a._native, b._native));
+}
+
+/**
  * Dot product / matrix multiplication
  */
 export function dot(a: NDArray, b: NDArray): NDArray | number {

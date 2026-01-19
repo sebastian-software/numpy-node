@@ -1617,12 +1617,125 @@ Napi::Value BatchMatmul(const Napi::CallbackInfo& info) {
     return results;
 }
 
+/**
+ * Batch matrix multiplication with stacked 3D arrays.
+ * Much more efficient than batch_matmul as it only creates one output array.
+ *
+ * batch_matmul_stacked(A, B) where:
+ *   A has shape [batch, m, k]
+ *   B has shape [batch, k, n]
+ * Returns array with shape [batch, m, n]
+ */
+Napi::Value BatchMatmulStacked(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected two 3D arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    // Ensure contiguous
+    Napi::Object aCopy, bCopy;
+    a = ensureContiguous(info, a, aCopy);
+    b = ensureContiguous(info, b, bCopy);
+
+    if (a->ndim() != 3 || b->ndim() != 3) {
+        Napi::Error::New(env, "Both inputs must be 3D arrays [batch, rows, cols]").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int64_t batchA = a->shape()[0];
+    int64_t batchB = b->shape()[0];
+    if (batchA != batchB) {
+        Napi::Error::New(env, "Batch dimensions must match").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int64_t batch = batchA;
+    int64_t m = a->shape()[1];
+    int64_t ka = a->shape()[2];
+    int64_t kb = b->shape()[1];
+    int64_t n = b->shape()[2];
+
+    if (ka != kb) {
+        Napi::Error::New(env, "Matrix dimensions incompatible: A[batch,m,k] @ B[batch,k,n]").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int64_t k = ka;
+
+    // Create single output array [batch, m, n]
+    Napi::Array cShape = Napi::Array::New(env, 3);
+    cShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(batch)));
+    cShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(m)));
+    cShape.Set(uint32_t(2), Napi::Number::New(env, static_cast<double>(n)));
+    Napi::Object cResult = NativeNDArray::constructor.New({
+        cShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(cResult);
+
+    double* aData = static_cast<double*>(a->data());
+    double* bData = static_cast<double*>(b->data());
+    double* cData = static_cast<double*>(c->data());
+
+    int64_t aStride = m * k;
+    int64_t bStride = k * n;
+    int64_t cStride = m * n;
+
+#if defined(USE_ACCELERATE)
+    // Loop over batch, all BLAS calls happen in C++ without N-API overhead
+    for (int64_t i = 0; i < batch; i++) {
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    static_cast<int>(m), static_cast<int>(n), static_cast<int>(k),
+                    1.0, aData + i * aStride, static_cast<int>(k),
+                    bData + i * bStride, static_cast<int>(n),
+                    0.0, cData + i * cStride, static_cast<int>(n));
+    }
+#elif defined(USE_OPENBLAS)
+    char transA = 'N', transB = 'N';
+    double alpha = 1.0, beta = 0.0;
+    int mi = static_cast<int>(m);
+    int ni = static_cast<int>(n);
+    int ki = static_cast<int>(k);
+
+    for (int64_t i = 0; i < batch; i++) {
+        dgemm_(&transA, &transB, &ni, &mi, &ki,
+               &alpha, bData + i * bStride, &ni,
+               aData + i * aStride, &ki,
+               &beta, cData + i * cStride, &ni);
+    }
+#else
+    // Pure fallback
+    for (int64_t i = 0; i < batch; i++) {
+        double* aMatrix = aData + i * aStride;
+        double* bMatrix = bData + i * bStride;
+        double* cMatrix = cData + i * cStride;
+
+        for (int64_t row = 0; row < m; row++) {
+            for (int64_t col = 0; col < n; col++) {
+                double sum = 0.0;
+                for (int64_t inner = 0; inner < k; inner++) {
+                    sum += aMatrix[row * k + inner] * bMatrix[inner * n + col];
+                }
+                cMatrix[row * n + col] = sum;
+            }
+        }
+    }
+#endif
+
+    return cResult;
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Napi::Object linalg = Napi::Object::New(env);
 
     linalg.Set("matmul", Napi::Function::New(env, Matmul));
     linalg.Set("matmul_nt", Napi::Function::New(env, MatmulNT));
     linalg.Set("batch_matmul", Napi::Function::New(env, BatchMatmul));
+    linalg.Set("batch_matmul_stacked", Napi::Function::New(env, BatchMatmulStacked));
     linalg.Set("dot", Napi::Function::New(env, Dot));
     linalg.Set("det", Napi::Function::New(env, Det));
     linalg.Set("inv", Napi::Function::New(env, Inv));

@@ -755,6 +755,513 @@ def scenario_kronecker_product():
     return kronecker
 
 
+# ============================================
+# Machine Learning / Deep Learning Scenarios
+# ============================================
+
+def scenario_batch_normalization():
+    """
+    Batch normalization: (x - mean) / sqrt(var + eps) * gamma + beta
+    Common in CNNs and deep networks.
+    """
+    x = np.random.randn(256, 64, 32, 32)  # NCHW format
+    gamma = np.random.randn(64)
+    beta = np.random.randn(64)
+    eps = 1e-5
+
+    def batch_norm():
+        # Compute mean and var over batch, height, width (axes 0, 2, 3)
+        mean = x.mean(axis=(0, 2, 3), keepdims=True)
+        var = x.var(axis=(0, 2, 3), keepdims=True)
+        x_norm = (x - mean) / np.sqrt(var + eps)
+        # Scale and shift (broadcast gamma and beta)
+        out = x_norm * gamma.reshape(1, -1, 1, 1) + beta.reshape(1, -1, 1, 1)
+        return out
+
+    return batch_norm
+
+
+def scenario_dropout_forward():
+    """
+    Dropout forward pass - generate mask and apply.
+    Common regularization technique.
+    """
+    x = np.random.randn(1000, 512)
+    p = 0.5  # dropout probability
+
+    def dropout():
+        # Generate binary mask
+        mask = (np.random.rand(*x.shape) > p).astype(np.float64)
+        # Apply mask and scale
+        out = x * mask / (1 - p)
+        return out, mask
+
+    return dropout
+
+
+def scenario_xavier_init():
+    """
+    Xavier/Glorot weight initialization for neural networks.
+    """
+    layers = [(784, 512), (512, 256), (256, 128), (128, 10)]
+
+    def xavier():
+        weights = []
+        for fan_in, fan_out in layers:
+            std = np.sqrt(2.0 / (fan_in + fan_out))
+            W = np.random.randn(fan_in, fan_out) * std
+            weights.append(W)
+        return weights
+
+    return xavier
+
+
+def scenario_adam_optimizer_step():
+    """
+    Adam optimizer update step.
+    Most popular optimizer for deep learning.
+    """
+    n_params = 100000
+    params = np.random.randn(n_params)
+    grads = np.random.randn(n_params)
+    m = np.zeros(n_params)  # First moment
+    v = np.zeros(n_params)  # Second moment
+    lr = 0.001
+    beta1 = 0.9
+    beta2 = 0.999
+    eps = 1e-8
+    t = 1
+
+    def adam_step():
+        nonlocal m, v, t
+        # Update biased moments
+        m = beta1 * m + (1 - beta1) * grads
+        v = beta2 * v + (1 - beta2) * (grads ** 2)
+        # Bias correction
+        m_hat = m / (1 - beta1 ** t)
+        v_hat = v / (1 - beta2 ** t)
+        # Update params
+        new_params = params - lr * m_hat / (np.sqrt(v_hat) + eps)
+        t += 1
+        return new_params
+
+    return adam_step
+
+
+def scenario_confusion_matrix():
+    """
+    Compute confusion matrix from predictions.
+    Essential for classification evaluation.
+    """
+    n_samples = 10000
+    n_classes = 10
+    y_true = np.random.randint(0, n_classes, n_samples)
+    y_pred = np.random.randint(0, n_classes, n_samples)
+
+    def compute_confusion():
+        cm = np.zeros((n_classes, n_classes), dtype=np.int64)
+        for t, p in zip(y_true, y_pred):
+            cm[t, p] += 1
+        return cm
+
+    return compute_confusion
+
+
+# ============================================
+# Statistics Scenarios
+# ============================================
+
+def scenario_bootstrap_mean():
+    """
+    Bootstrap resampling for confidence intervals.
+    Common in statistical inference.
+    """
+    data = np.random.randn(1000)
+    n_bootstrap = 1000
+
+    def bootstrap():
+        means = np.zeros(n_bootstrap)
+        n = len(data)
+        for i in range(n_bootstrap):
+            # Resample with replacement
+            indices = np.random.randint(0, n, n)
+            sample = data[indices]
+            means[i] = sample.mean()
+        # Return 95% CI
+        ci_low = np.percentile(means, 2.5)
+        ci_high = np.percentile(means, 97.5)
+        return means.mean(), ci_low, ci_high
+
+    return bootstrap
+
+
+def scenario_welch_ttest():
+    """
+    Welch's t-test for comparing two samples.
+    """
+    sample1 = np.random.randn(500) * 1.5 + 2.0
+    sample2 = np.random.randn(600) * 2.0 + 2.5
+
+    def ttest():
+        n1, n2 = len(sample1), len(sample2)
+        mean1, mean2 = sample1.mean(), sample2.mean()
+        var1, var2 = sample1.var(ddof=1), sample2.var(ddof=1)
+
+        # Welch's t-statistic
+        se = np.sqrt(var1/n1 + var2/n2)
+        t_stat = (mean1 - mean2) / se
+
+        # Degrees of freedom (Welch-Satterthwaite)
+        num = (var1/n1 + var2/n2) ** 2
+        denom = (var1/n1)**2/(n1-1) + (var2/n2)**2/(n2-1)
+        df = num / denom
+
+        return t_stat, df
+
+    return ttest
+
+
+def scenario_kde():
+    """
+    Kernel Density Estimation with Gaussian kernel.
+    """
+    data = np.random.randn(1000)
+    x_eval = np.linspace(-4, 4, 200)
+    bandwidth = 0.3
+
+    def kde():
+        n = len(data)
+        # Gaussian kernel: K(u) = exp(-u^2/2) / sqrt(2*pi)
+        # For each eval point, sum contributions from all data points
+        density = np.zeros(len(x_eval))
+        for i, x in enumerate(x_eval):
+            u = (x - data) / bandwidth
+            density[i] = np.exp(-0.5 * u**2).sum()
+        density /= (n * bandwidth * np.sqrt(2 * np.pi))
+        return density
+
+    return kde
+
+
+def scenario_moving_window_stats():
+    """
+    Moving window statistics: mean, std, min, max.
+    Common in time series analysis.
+    """
+    data = np.random.randn(10000)
+    window = 100
+
+    def moving_stats():
+        n = len(data) - window + 1
+        means = np.zeros(n)
+        stds = np.zeros(n)
+        mins = np.zeros(n)
+        maxs = np.zeros(n)
+
+        for i in range(n):
+            w = data[i:i+window]
+            means[i] = w.mean()
+            stds[i] = w.std()
+            mins[i] = w.min()
+            maxs[i] = w.max()
+
+        return means, stds, mins, maxs
+
+    return moving_stats
+
+
+# ============================================
+# Signal Processing / Physics Scenarios
+# ============================================
+
+def scenario_autocorrelation():
+    """
+    Autocorrelation of a time series.
+    Important for time series analysis.
+    """
+    signal = np.random.randn(5000)
+    max_lag = 100
+
+    def autocorr():
+        n = len(signal)
+        mean = signal.mean()
+        var = signal.var()
+        signal_centered = signal - mean
+
+        result = np.zeros(max_lag)
+        for lag in range(max_lag):
+            if lag == 0:
+                result[lag] = 1.0
+            else:
+                result[lag] = np.sum(signal_centered[:-lag] * signal_centered[lag:]) / ((n - lag) * var)
+        return result
+
+    return autocorr
+
+
+def scenario_nbody_step():
+    """
+    N-body gravitational simulation step.
+    Compute pairwise forces and update velocities.
+    """
+    n_bodies = 500
+    positions = np.random.randn(n_bodies, 3) * 10
+    velocities = np.random.randn(n_bodies, 3) * 0.1
+    masses = np.random.rand(n_bodies) + 0.1
+    G = 1.0
+    dt = 0.01
+    softening = 0.1
+
+    def nbody():
+        # Compute pairwise displacements
+        dx = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]  # (n, n, 3)
+        # Compute distances
+        r2 = (dx ** 2).sum(axis=2) + softening ** 2  # (n, n)
+        r3 = r2 * np.sqrt(r2)
+        # Compute accelerations
+        # a_i = G * sum_j m_j * (x_j - x_i) / |x_j - x_i|^3
+        accel = G * np.sum(masses[np.newaxis, :, np.newaxis] * (-dx) / r3[:, :, np.newaxis], axis=1)
+        # Update velocities
+        new_velocities = velocities + accel * dt
+        return new_velocities
+
+    return nbody
+
+
+def scenario_heat_equation():
+    """
+    2D heat equation using finite differences.
+    Laplacian: d²T/dx² + d²T/dy²
+    """
+    n = 100
+    T = np.random.rand(n, n)
+    T[0, :] = T[-1, :] = T[:, 0] = T[:, -1] = 0  # Boundary conditions
+    alpha = 0.25  # Diffusion coefficient
+    n_steps = 50
+
+    def heat_step():
+        T_new = T.copy()
+        for _ in range(n_steps):
+            # Laplacian using 5-point stencil
+            laplacian = (
+                T_new[:-2, 1:-1] + T_new[2:, 1:-1] +
+                T_new[1:-1, :-2] + T_new[1:-1, 2:] -
+                4 * T_new[1:-1, 1:-1]
+            )
+            T_new[1:-1, 1:-1] += alpha * laplacian
+        return T_new
+
+    return heat_step
+
+
+def scenario_monte_carlo_pi():
+    """
+    Monte Carlo estimation of Pi.
+    Classic example of MC simulation.
+    """
+    n_samples = 1000000
+
+    def monte_carlo():
+        # Generate random points in unit square
+        x = np.random.rand(n_samples)
+        y = np.random.rand(n_samples)
+        # Count points inside quarter circle
+        inside = (x**2 + y**2) <= 1.0
+        pi_estimate = 4.0 * inside.sum() / n_samples
+        return pi_estimate
+
+    return monte_carlo
+
+
+# ============================================
+# Finance Scenarios (Additional)
+# ============================================
+
+def scenario_black_scholes():
+    """
+    Black-Scholes option pricing.
+    """
+    n_options = 10000
+    S = np.random.uniform(80, 120, n_options)  # Stock price
+    K = 100 * np.ones(n_options)  # Strike price
+    T = np.random.uniform(0.1, 2.0, n_options)  # Time to maturity
+    r = 0.05  # Risk-free rate
+    sigma = np.random.uniform(0.1, 0.5, n_options)  # Volatility
+
+    def black_scholes():
+        # d1 and d2
+        d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+
+        # Normal CDF approximation
+        def norm_cdf(x):
+            return 0.5 * (1 + np.tanh(x * 0.7978845608))  # Approximation
+
+        # Call price
+        call = S * norm_cdf(d1) - K * np.exp(-r * T) * norm_cdf(d2)
+        return call
+
+    return black_scholes
+
+
+def scenario_var_historical():
+    """
+    Value at Risk using historical simulation.
+    """
+    n_days = 1000
+    n_assets = 50
+    returns = np.random.randn(n_days, n_assets) * 0.02  # Daily returns
+    weights = np.random.rand(n_assets)
+    weights /= weights.sum()  # Normalize
+    confidence = 0.95
+
+    def var():
+        # Portfolio returns
+        portfolio_returns = returns @ weights
+        # Sort returns
+        sorted_returns = np.sort(portfolio_returns)
+        # VaR at confidence level
+        var_idx = int((1 - confidence) * n_days)
+        var_value = -sorted_returns[var_idx]
+        # Expected Shortfall (CVaR)
+        cvar = -sorted_returns[:var_idx].mean()
+        return var_value, cvar
+
+    return var
+
+
+def scenario_ewma_volatility():
+    """
+    Exponentially Weighted Moving Average volatility.
+    Common in risk management.
+    """
+    returns = np.random.randn(2000) * 0.02
+    lambda_param = 0.94  # Decay factor
+
+    def ewma():
+        n = len(returns)
+        variance = np.zeros(n)
+        variance[0] = returns[0] ** 2
+
+        for i in range(1, n):
+            variance[i] = lambda_param * variance[i-1] + (1 - lambda_param) * returns[i-1]**2
+
+        volatility = np.sqrt(variance)
+        return volatility
+
+    return ewma
+
+
+# ============================================
+# Miscellaneous Scenarios
+# ============================================
+
+def scenario_matrix_factorization_step():
+    """
+    Matrix factorization SGD step for recommender systems.
+    """
+    n_users = 1000
+    n_items = 500
+    n_factors = 50
+    n_ratings = 10000
+
+    # Latent factors
+    P = np.random.randn(n_users, n_factors) * 0.1
+    Q = np.random.randn(n_items, n_factors) * 0.1
+
+    # Sparse ratings (user_id, item_id, rating)
+    users = np.random.randint(0, n_users, n_ratings)
+    items = np.random.randint(0, n_items, n_ratings)
+    ratings = np.random.rand(n_ratings) * 4 + 1  # 1-5 scale
+
+    lr = 0.01
+    reg = 0.02
+
+    def mf_step():
+        P_new = P.copy()
+        Q_new = Q.copy()
+
+        for u, i, r in zip(users, items, ratings):
+            pred = P_new[u] @ Q_new[i]
+            error = r - pred
+            # Update factors
+            P_new[u] += lr * (error * Q_new[i] - reg * P_new[u])
+            Q_new[i] += lr * (error * P_new[u] - reg * Q_new[i])
+
+        return P_new, Q_new
+
+    return mf_step
+
+
+def scenario_tfidf():
+    """
+    TF-IDF computation for text processing.
+    """
+    n_docs = 500
+    n_terms = 1000
+    # Simulated term frequencies (sparse-ish)
+    tf = np.random.poisson(2, (n_docs, n_terms)).astype(np.float64)
+
+    def tfidf():
+        # Term frequency normalization
+        tf_norm = tf / (tf.sum(axis=1, keepdims=True) + 1e-10)
+        # Document frequency
+        df = (tf > 0).sum(axis=0)
+        # Inverse document frequency
+        idf = np.log(n_docs / (df + 1))
+        # TF-IDF
+        tfidf_matrix = tf_norm * idf
+        return tfidf_matrix
+
+    return tfidf
+
+
+def scenario_bilinear_interpolation():
+    """
+    Bilinear interpolation for image resizing.
+    """
+    # Source image
+    src_h, src_w = 256, 256
+    src = np.random.rand(src_h, src_w)
+    # Target size
+    dst_h, dst_w = 512, 512
+
+    def bilinear():
+        dst = np.zeros((dst_h, dst_w))
+
+        # Scale factors
+        scale_y = src_h / dst_h
+        scale_x = src_w / dst_w
+
+        for y in range(dst_h):
+            for x in range(dst_w):
+                # Source coordinates
+                src_y = y * scale_y
+                src_x = x * scale_x
+
+                # Integer parts
+                y0 = int(src_y)
+                x0 = int(src_x)
+                y1 = min(y0 + 1, src_h - 1)
+                x1 = min(x0 + 1, src_w - 1)
+
+                # Fractional parts
+                fy = src_y - y0
+                fx = src_x - x0
+
+                # Bilinear interpolation
+                dst[y, x] = (
+                    src[y0, x0] * (1 - fx) * (1 - fy) +
+                    src[y0, x1] * fx * (1 - fy) +
+                    src[y1, x0] * (1 - fx) * fy +
+                    src[y1, x1] * fx * fy
+                )
+
+        return dst
+
+    return bilinear
+
+
 def run_benchmarks() -> List[Dict[str, Any]]:
     """Run all real-world benchmarks."""
     results = []
@@ -807,6 +1314,30 @@ def run_benchmarks() -> List[Dict[str, Any]]:
         # Matrix Operations
         ("Outer Product (1k x 1k)", scenario_outer_product),
         ("Kronecker Product (50x50 ⊗ 20x20)", scenario_kronecker_product),
+        # Machine Learning / Deep Learning
+        ("Batch Normalization (256x64x32x32)", scenario_batch_normalization),
+        ("Dropout Forward (1k x 512)", scenario_dropout_forward),
+        ("Xavier Init (4 layers)", scenario_xavier_init),
+        ("Adam Optimizer Step (100k params)", scenario_adam_optimizer_step),
+        ("Confusion Matrix (10k samples)", scenario_confusion_matrix),
+        # Statistics
+        ("Bootstrap Mean (1k samples, 1k resamples)", scenario_bootstrap_mean),
+        ("Welch t-Test (500 vs 600)", scenario_welch_ttest),
+        ("KDE (1k points, 200 eval)", scenario_kde),
+        ("Moving Window Stats (10k, w=100)", scenario_moving_window_stats),
+        # Signal Processing / Physics
+        ("Autocorrelation (5k, lag=100)", scenario_autocorrelation),
+        ("N-Body Step (500 bodies)", scenario_nbody_step),
+        ("Heat Equation (100x100, 50 steps)", scenario_heat_equation),
+        ("Monte Carlo Pi (1M samples)", scenario_monte_carlo_pi),
+        # Finance (Additional)
+        ("Black-Scholes (10k options)", scenario_black_scholes),
+        ("VaR Historical (1k days, 50 assets)", scenario_var_historical),
+        ("EWMA Volatility (2k returns)", scenario_ewma_volatility),
+        # Miscellaneous
+        ("Matrix Factorization Step (1k×500)", scenario_matrix_factorization_step),
+        ("TF-IDF (500 docs, 1k terms)", scenario_tfidf),
+        ("Bilinear Interpolation (256→512)", scenario_bilinear_interpolation),
     ]
 
     for name, scenario_fn in scenarios:

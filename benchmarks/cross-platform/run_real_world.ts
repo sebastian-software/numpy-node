@@ -69,9 +69,20 @@ function formatMs(ms: number): string {
 }
 
 function formatSpeedup(ratio: number): string {
-  if (ratio > 1) {
+  // Yellow for near-parity (within 15% of each other)
+  if (ratio >= 0.85 && ratio <= 1.15) {
+    if (ratio >= 1) {
+      return `\x1b[33m${ratio.toFixed(2)}x faster\x1b[0m`;
+    } else {
+      return `\x1b[33m${(1 / ratio).toFixed(2)}x slower\x1b[0m`;
+    }
+  }
+  // Green for clearly faster
+  if (ratio > 1.15) {
     return `\x1b[32m${ratio.toFixed(2)}x faster\x1b[0m`;
-  } else if (ratio < 1) {
+  }
+  // Red for clearly slower
+  if (ratio < 0.85) {
     return `\x1b[31m${(1 / ratio).toFixed(2)}x slower\x1b[0m`;
   }
   return 'same';
@@ -101,8 +112,18 @@ function generateMarkdownReport(python: BenchmarkOutput, node: BenchmarkOutput):
       total++;
       const speedup = pythonResult.median / nodeResult.median;
       if (speedup >= 1) wins++;
-      const speedupStr =
-        speedup >= 1 ? `**${speedup.toFixed(2)}x faster**` : `${(1 / speedup).toFixed(2)}x slower`;
+
+      let speedupStr: string;
+      if (speedup >= 0.85 && speedup <= 1.15) {
+        // Near parity - yellow/neutral
+        speedupStr = speedup >= 1 ? `~${speedup.toFixed(2)}x` : `~${(1 / speedup).toFixed(2)}x`;
+      } else if (speedup > 1.15) {
+        // Clearly faster - green
+        speedupStr = `**${speedup.toFixed(2)}x faster**`;
+      } else {
+        // Clearly slower - red
+        speedupStr = `${(1 / speedup).toFixed(2)}x slower`;
+      }
 
       lines.push(
         `| ${nodeResult.name} | ${formatMs(pythonResult.median)} | ${formatMs(nodeResult.median)} | ${speedupStr} |`
