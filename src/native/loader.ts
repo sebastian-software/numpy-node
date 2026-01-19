@@ -255,6 +255,9 @@ export interface NativeModule {
   math: MathModule;
   random: RandomModule;
   fft: FftModule;
+
+  // Einsum
+  einsum(subscripts: string, ...operands: NativeNDArray[]): NativeNDArray;
 }
 
 /**

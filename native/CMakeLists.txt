@@ -29,6 +29,7 @@ set(SOURCES
     src/math_ops.cc
     src/random.cc
     src/fft_ops.cc
+    src/einsum.cc
 )
 
 # Header files
@@ -38,6 +39,7 @@ set(HEADERS
     src/math_ops.h
     src/random.h
     src/fft_ops.h
+    src/einsum.h
 )
 
 # Create the native addon

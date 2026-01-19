@@ -111,6 +111,8 @@ export {
   // Approximate comparison
   isclose,
   allclose,
+  // Einstein summation
+  einsum,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)

@@ -85,6 +85,7 @@ import {
   isclose,
   allclose,
   fft,
+  einsum,
   matmul,
   dot,
   inv,
@@ -133,6 +134,7 @@ interface ReferenceData {
     advanced_math: TestCategory;
     random: TestCategory;
     fft: TestCategory;
+    einsum: TestCategory;
   };
 }
 
@@ -1477,6 +1479,87 @@ describe('NumPy Conformity Tests', () => {
     });
   });
 
+  describe('Einsum (Einstein Summation)', () => {
+    it('einsum - matrix multiplication (ij,jk->ik)', () => {
+      const A = array([
+        [1.0, 2.0],
+        [3.0, 4.0],
+      ]);
+      const B = array([
+        [5.0, 6.0],
+        [7.0, 8.0],
+      ]);
+      const result = einsum('ij,jk->ik', A, B);
+      expectArrayClose(result, ref.tests.einsum.matmul as ArrayRef);
+    });
+
+    it('einsum - trace (ii)', () => {
+      const A = array([
+        [1.0, 2.0],
+        [3.0, 4.0],
+      ]);
+      const result = einsum('ii', A);
+      // Trace returns a scalar wrapped in a 0-d or 1-d array
+      const expected = ref.tests.einsum.trace;
+      if (typeof expected === 'number') {
+        expect(result.toFlatArray()[0]).toBeCloseTo(expected, 10);
+      } else {
+        expectArrayClose(result, expected as ArrayRef);
+      }
+    });
+
+    it('einsum - diagonal (ii->i)', () => {
+      const A = array([
+        [1.0, 2.0],
+        [3.0, 4.0],
+      ]);
+      const result = einsum('ii->i', A);
+      expectArrayClose(result, ref.tests.einsum.diagonal as ArrayRef);
+    });
+
+    it('einsum - inner product (i,i)', () => {
+      const a = array([1.0, 2.0, 3.0]);
+      const b = array([4.0, 5.0, 6.0]);
+      const result = einsum('i,i', a, b);
+      // Inner product returns a scalar wrapped in a 0-d or 1-d array
+      const expected = ref.tests.einsum.inner;
+      if (typeof expected === 'number') {
+        expect(result.toFlatArray()[0]).toBeCloseTo(expected, 10);
+      } else {
+        expectArrayClose(result, expected as ArrayRef);
+      }
+    });
+
+    it('einsum - outer product (i,j->ij)', () => {
+      const a = array([1.0, 2.0, 3.0]);
+      const b = array([4.0, 5.0, 6.0]);
+      const result = einsum('i,j->ij', a, b);
+      expectArrayClose(result, ref.tests.einsum.outer as ArrayRef);
+    });
+
+    it('einsum - transpose (ij->ji)', () => {
+      const A = array([
+        [1.0, 2.0],
+        [3.0, 4.0],
+      ]);
+      const result = einsum('ij->ji', A);
+      expectArrayClose(result, ref.tests.einsum.transpose as ArrayRef);
+    });
+
+    it('einsum - batch diagonal sum (ij,ij->i)', () => {
+      const A = array([
+        [1.0, 2.0],
+        [3.0, 4.0],
+      ]);
+      const B = array([
+        [5.0, 6.0],
+        [7.0, 8.0],
+      ]);
+      const result = einsum('ij,ij->i', A, B);
+      expectArrayClose(result, ref.tests.einsum.batch_diag as ArrayRef);
+    });
+  });
+
   // Random tests are skipped because numpy-node uses a different RNG implementation
   describe.skip('Random (deterministic)', () => {
     // These would require implementing the exact same RNG as NumPy
@@ -1586,6 +1669,9 @@ describe('Completeness Check', () => {
 
     // FFT
     fft: ['fft', 'ifft', 'rfft', 'irfft', 'fftfreq', 'rfftfreq'],
+
+    // Einsum
+    einsum: ['einsum'],
   };
 
   // Functions tested in this file (update when adding new tests)
@@ -1640,6 +1726,7 @@ describe('Completeness Check', () => {
     ],
     advanced_math: ['outer', 'kron', 'percentile', 'corrcoef'],
     fft: ['fft', 'ifft', 'rfft', 'irfft', 'fftfreq', 'rfftfreq'],
+    einsum: ['einsum'],
   };
 
   for (const [category, requiredFunctions] of Object.entries(REQUIRED_COVERAGE)) {
@@ -1678,10 +1765,8 @@ describe('Completeness Check', () => {
     const coverage = (allTested.length / allRequired.length) * 100;
 
     // NumPy functions NOT YET implemented (from MISSING_FEATURES.md)
-    const MISSING_FROM_NUMPY = [
-      // Tier 5 - Advanced
-      'einsum',
-    ];
+    // All core NumPy functions are now implemented!
+    const MISSING_FROM_NUMPY: string[] = [];
 
     const totalImplemented = allTested.length;
     const totalMissing = MISSING_FROM_NUMPY.length;
@@ -1830,6 +1915,8 @@ describe('Completeness Check', () => {
       'cond',
       'lstsq',
       'normal_equations',
+      // Einsum
+      'einsum',
     ];
 
     // Functions that are intentionally excluded from conformity testing

@@ -466,6 +466,28 @@ def generate_reference():
         "rfftfreq": to_serializable(np.fft.rfftfreq(4, 1)),
     }
 
+    # =========================================================================
+    # EINSUM (Einstein Summation)
+    # =========================================================================
+    A = np.array([[1.0, 2.0], [3.0, 4.0]])
+    B = np.array([[5.0, 6.0], [7.0, 8.0]])
+    a = np.array([1.0, 2.0, 3.0])
+    b = np.array([4.0, 5.0, 6.0])
+
+    ref["tests"]["einsum"] = {
+        "input_A": to_serializable(A),
+        "input_B": to_serializable(B),
+        "input_a": to_serializable(a),
+        "input_b": to_serializable(b),
+        "matmul": to_serializable(np.einsum('ij,jk->ik', A, B)),
+        "trace": to_serializable(np.einsum('ii', A)),
+        "diagonal": to_serializable(np.einsum('ii->i', A)),
+        "inner": to_serializable(np.einsum('i,i', a, b)),
+        "outer": to_serializable(np.einsum('i,j->ij', a, b)),
+        "transpose": to_serializable(np.einsum('ij->ji', A)),
+        "batch_diag": to_serializable(np.einsum('ij,ij->i', A, B)),
+    }
+
     return ref
 
 if __name__ == "__main__":

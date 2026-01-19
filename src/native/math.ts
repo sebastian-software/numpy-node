@@ -793,3 +793,44 @@ export function squeeze(a: NDArray, axis?: number): NDArray {
 export function expand_dims(a: NDArray, axis: number): NDArray {
   return new NDArray(math.expand_dims(a._native, axis));
 }
+
+// ============================================================
+// Einstein Summation
+// ============================================================
+
+/**
+ * Evaluates the Einstein summation convention on the operands.
+ *
+ * Using the Einstein summation convention, many common multi-dimensional,
+ * linear algebraic array operations can be represented in a simple fashion.
+ *
+ * @param subscripts Specifies the subscripts for summation as a string
+ * @param operands The arrays for the operation
+ * @returns The calculation based on the Einstein summation convention
+ *
+ * @example
+ * ```typescript
+ * // Matrix multiplication
+ * const A = array([[1, 2], [3, 4]]);
+ * const B = array([[5, 6], [7, 8]]);
+ * const C = einsum('ij,jk->ik', A, B);
+ *
+ * // Trace (sum of diagonal)
+ * const trace = einsum('ii', A);
+ *
+ * // Diagonal
+ * const diag = einsum('ii->i', A);
+ *
+ * // Inner product
+ * const a = array([1, 2, 3]);
+ * const b = array([4, 5, 6]);
+ * const dot = einsum('i,i', a, b);
+ *
+ * // Outer product
+ * const outer = einsum('i,j->ij', a, b);
+ * ```
+ */
+export function einsum(subscripts: string, ...operands: NDArray[]): NDArray {
+  const nativeOperands = operands.map((op) => op._native);
+  return new NDArray(native.einsum(subscripts, ...nativeOperands));
+}
