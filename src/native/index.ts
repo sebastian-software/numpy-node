@@ -35,6 +35,11 @@ export {
   multiply,
   divide,
   power,
+  // In-place operations
+  add_inplace,
+  subtract_inplace,
+  multiply_inplace,
+  divide_inplace,
   sqrt,
   exp,
   log,

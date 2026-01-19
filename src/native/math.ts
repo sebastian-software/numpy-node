@@ -47,6 +47,47 @@ export function power(a: NDArray, b: NDArray | number): NDArray {
 }
 
 // ============================================================
+// In-place Arithmetic Operations
+// These modify the first argument and return it (for chaining)
+// ============================================================
+
+/**
+ * In-place element-wise addition: a += b
+ * Modifies `a` directly and returns it
+ */
+export function add_inplace(a: NDArray, b: NDArray | number): NDArray {
+  math.add_inplace(a._native, b instanceof NDArray ? b._native : b);
+  return a;
+}
+
+/**
+ * In-place element-wise subtraction: a -= b
+ * Modifies `a` directly and returns it
+ */
+export function subtract_inplace(a: NDArray, b: NDArray | number): NDArray {
+  math.subtract_inplace(a._native, b instanceof NDArray ? b._native : b);
+  return a;
+}
+
+/**
+ * In-place element-wise multiplication: a *= b
+ * Modifies `a` directly and returns it
+ */
+export function multiply_inplace(a: NDArray, b: NDArray | number): NDArray {
+  math.multiply_inplace(a._native, b instanceof NDArray ? b._native : b);
+  return a;
+}
+
+/**
+ * In-place element-wise division: a /= b
+ * Modifies `a` directly and returns it
+ */
+export function divide_inplace(a: NDArray, b: NDArray | number): NDArray {
+  math.divide_inplace(a._native, b instanceof NDArray ? b._native : b);
+  return a;
+}
+
+// ============================================================
 // Unary Math Functions
 // ============================================================
 

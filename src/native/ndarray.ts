@@ -327,6 +327,50 @@ export class NDArray {
       yield Number(data[i]);
     }
   }
+
+  // ============================================================
+  // In-place Operations
+  // ============================================================
+
+  /**
+   * In-place addition: this += b
+   * @returns this (for chaining)
+   */
+  iadd(b: NDArray | number): this {
+    const { math } = native;
+    math.add_inplace(this._native, b instanceof NDArray ? b._native : b);
+    return this;
+  }
+
+  /**
+   * In-place subtraction: this -= b
+   * @returns this (for chaining)
+   */
+  isub(b: NDArray | number): this {
+    const { math } = native;
+    math.subtract_inplace(this._native, b instanceof NDArray ? b._native : b);
+    return this;
+  }
+
+  /**
+   * In-place multiplication: this *= b
+   * @returns this (for chaining)
+   */
+  imul(b: NDArray | number): this {
+    const { math } = native;
+    math.multiply_inplace(this._native, b instanceof NDArray ? b._native : b);
+    return this;
+  }
+
+  /**
+   * In-place division: this /= b
+   * @returns this (for chaining)
+   */
+  idiv(b: NDArray | number): this {
+    const { math } = native;
+    math.divide_inplace(this._native, b instanceof NDArray ? b._native : b);
+    return this;
+  }
 }
 
 // ============================================================

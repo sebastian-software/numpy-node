@@ -14,6 +14,12 @@ Napi::Value Multiply(const Napi::CallbackInfo& info);
 Napi::Value Divide(const Napi::CallbackInfo& info);
 Napi::Value Power(const Napi::CallbackInfo& info);
 
+// In-place arithmetic (modifies first argument)
+Napi::Value AddInplace(const Napi::CallbackInfo& info);
+Napi::Value SubtractInplace(const Napi::CallbackInfo& info);
+Napi::Value MultiplyInplace(const Napi::CallbackInfo& info);
+Napi::Value DivideInplace(const Napi::CallbackInfo& info);
+
 // Element-wise math functions
 Napi::Value Sqrt(const Napi::CallbackInfo& info);
 Napi::Value Exp(const Napi::CallbackInfo& info);

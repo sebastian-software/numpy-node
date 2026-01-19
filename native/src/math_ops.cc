@@ -601,6 +601,196 @@ Napi::Value Power(const Napi::CallbackInfo& info) {
     return BinaryOp(info, [](double a, double b) { return std::pow(a, b); });
 }
 
+// ============================================================
+// In-place arithmetic operations
+// These modify the first argument directly, avoiding allocation
+// ============================================================
+
+Napi::Value AddInplace(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected two arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* dataA = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    // Scalar addition
+    if (info[1].IsNumber()) {
+        double scalar = info[1].As<Napi::Number>().DoubleValue();
+#if defined(USE_ACCELERATE)
+        vDSP_vsaddD(dataA, 1, &scalar, dataA, 1, size);
+#else
+        for (int64_t i = 0; i < size; i++) {
+            dataA[i] += scalar;
+        }
+#endif
+        return info[0];
+    }
+
+    // Array addition (must be same shape for in-place)
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    if (a->shape() != b->shape()) {
+        Napi::TypeError::New(env, "In-place operations require same shape").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    double* dataB = static_cast<double*>(b->data());
+
+#if defined(USE_ACCELERATE)
+    vDSP_vaddD(dataA, 1, dataB, 1, dataA, 1, size);
+#else
+    for (int64_t i = 0; i < size; i++) {
+        dataA[i] += dataB[i];
+    }
+#endif
+
+    return info[0];
+}
+
+Napi::Value SubtractInplace(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected two arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* dataA = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    // Scalar subtraction
+    if (info[1].IsNumber()) {
+        double scalar = -info[1].As<Napi::Number>().DoubleValue();
+#if defined(USE_ACCELERATE)
+        vDSP_vsaddD(dataA, 1, &scalar, dataA, 1, size);
+#else
+        double posScalar = -scalar;
+        for (int64_t i = 0; i < size; i++) {
+            dataA[i] -= posScalar;
+        }
+#endif
+        return info[0];
+    }
+
+    // Array subtraction (must be same shape for in-place)
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    if (a->shape() != b->shape()) {
+        Napi::TypeError::New(env, "In-place operations require same shape").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    double* dataB = static_cast<double*>(b->data());
+
+#if defined(USE_ACCELERATE)
+    vDSP_vsubD(dataB, 1, dataA, 1, dataA, 1, size);
+#else
+    for (int64_t i = 0; i < size; i++) {
+        dataA[i] -= dataB[i];
+    }
+#endif
+
+    return info[0];
+}
+
+Napi::Value MultiplyInplace(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected two arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* dataA = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    // Scalar multiplication
+    if (info[1].IsNumber()) {
+        double scalar = info[1].As<Napi::Number>().DoubleValue();
+#if defined(USE_ACCELERATE)
+        vDSP_vsmulD(dataA, 1, &scalar, dataA, 1, size);
+#else
+        for (int64_t i = 0; i < size; i++) {
+            dataA[i] *= scalar;
+        }
+#endif
+        return info[0];
+    }
+
+    // Array multiplication (must be same shape for in-place)
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    if (a->shape() != b->shape()) {
+        Napi::TypeError::New(env, "In-place operations require same shape").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    double* dataB = static_cast<double*>(b->data());
+
+#if defined(USE_ACCELERATE)
+    vDSP_vmulD(dataA, 1, dataB, 1, dataA, 1, size);
+#else
+    for (int64_t i = 0; i < size; i++) {
+        dataA[i] *= dataB[i];
+    }
+#endif
+
+    return info[0];
+}
+
+Napi::Value DivideInplace(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected two arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* dataA = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    // Scalar division
+    if (info[1].IsNumber()) {
+        double scalar = info[1].As<Napi::Number>().DoubleValue();
+#if defined(USE_ACCELERATE)
+        vDSP_vsdivD(dataA, 1, &scalar, dataA, 1, size);
+#else
+        for (int64_t i = 0; i < size; i++) {
+            dataA[i] /= scalar;
+        }
+#endif
+        return info[0];
+    }
+
+    // Array division (must be same shape for in-place)
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    if (a->shape() != b->shape()) {
+        Napi::TypeError::New(env, "In-place operations require same shape").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    double* dataB = static_cast<double*>(b->data());
+
+#if defined(USE_ACCELERATE)
+    vDSP_vdivD(dataB, 1, dataA, 1, dataA, 1, size);
+#else
+    for (int64_t i = 0; i < size; i++) {
+        dataA[i] /= dataB[i];
+    }
+#endif
+
+    return info[0];
+}
+
 // Vectorized unary operations using Accelerate/vecLib on macOS
 #if defined(USE_ACCELERATE)
 // Helper for vecLib unary operations
@@ -3308,6 +3498,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     math.Set("multiply", Napi::Function::New(env, Multiply));
     math.Set("divide", Napi::Function::New(env, Divide));
     math.Set("power", Napi::Function::New(env, Power));
+    math.Set("add_inplace", Napi::Function::New(env, AddInplace));
+    math.Set("subtract_inplace", Napi::Function::New(env, SubtractInplace));
+    math.Set("multiply_inplace", Napi::Function::New(env, MultiplyInplace));
+    math.Set("divide_inplace", Napi::Function::New(env, DivideInplace));
     math.Set("sqrt", Napi::Function::New(env, Sqrt));
     math.Set("exp", Napi::Function::New(env, Exp));
     math.Set("log", Napi::Function::New(env, Log));

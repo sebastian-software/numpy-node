@@ -14,6 +14,10 @@ import {
   min,
   mean,
   negative,
+  add_inplace,
+  subtract_inplace,
+  multiply_inplace,
+  divide_inplace,
   NDArray,
 } from '../../src/index.js';
 
@@ -115,6 +119,61 @@ describe('Arithmetic Operations', () => {
         [11, 12, 13],
         [24, 25, 26],
       ]);
+    });
+  });
+
+  describe('in-place operations', () => {
+    it('should add in-place with scalar', () => {
+      const a = array([1, 2, 3]);
+      const result = add_inplace(a, 10);
+      expect(a.toFlatArray()).toEqual([11, 12, 13]);
+      expect(result).toBe(a); // Returns same array
+    });
+
+    it('should add in-place with array', () => {
+      const a = array([1, 2, 3]);
+      const b = array([10, 20, 30]);
+      add_inplace(a, b);
+      expect(a.toFlatArray()).toEqual([11, 22, 33]);
+    });
+
+    it('should subtract in-place', () => {
+      const a = array([10, 20, 30]);
+      subtract_inplace(a, 5);
+      expect(a.toFlatArray()).toEqual([5, 15, 25]);
+    });
+
+    it('should multiply in-place', () => {
+      const a = array([1, 2, 3]);
+      multiply_inplace(a, 2);
+      expect(a.toFlatArray()).toEqual([2, 4, 6]);
+    });
+
+    it('should divide in-place', () => {
+      const a = array([10, 20, 30]);
+      divide_inplace(a, 2);
+      expect(a.toFlatArray()).toEqual([5, 10, 15]);
+    });
+
+    it('should support NDArray methods for in-place ops', () => {
+      const a = array([2, 4, 6]);
+      a.imul(2);
+      expect(a.toFlatArray()).toEqual([4, 8, 12]);
+
+      a.iadd(1);
+      expect(a.toFlatArray()).toEqual([5, 9, 13]);
+
+      a.isub(1);
+      expect(a.toFlatArray()).toEqual([4, 8, 12]);
+
+      a.idiv(2);
+      expect(a.toFlatArray()).toEqual([2, 4, 6]);
+    });
+
+    it('should support chaining of in-place methods', () => {
+      const a = array([5, 10, 15]);
+      a.imul(2).iadd(10).idiv(5);
+      expect(a.toFlatArray()).toEqual([4, 6, 8]);
     });
   });
 

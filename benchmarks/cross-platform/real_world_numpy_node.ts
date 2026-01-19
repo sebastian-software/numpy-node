@@ -1128,24 +1128,25 @@ function scenarioDropoutForward() {
   /**
    * Dropout forward pass - generate mask and apply.
    * Common regularization technique.
+   * Optimized with pre-allocated mask buffer.
    */
-  const x = randomMatrix(1000, 512);
+  const rows = 1000;
+  const cols = 512;
+  const x = randomMatrix(rows, cols);
   const p = 0.5; // dropout probability
   const scale = 1 / (1 - p);
 
+  // Pre-allocate mask buffer using zeros
+  const maskArr = zeros([rows, cols]);
+
   return function dropout() {
-    // Generate binary mask
-    const mask: number[][] = [];
-    for (let i = 0; i < 1000; i++) {
-      const row: number[] = [];
-      for (let j = 0; j < 512; j++) {
-        row.push(Math.random() > p ? 1 : 0);
-      }
-      mask.push(row);
+    // Generate binary mask directly into buffer
+    const maskData = maskArr.data as Float64Array;
+    for (let i = 0; i < rows * cols; i++) {
+      maskData[i] = Math.random() > p ? scale : 0; // Combine mask and scale
     }
-    const maskArr = array(mask);
-    // Apply mask and scale
-    const out = multiply(multiply(x, maskArr), scale);
+    // Apply mask (single multiply instead of two)
+    const out = multiply(x, maskArr);
     return { out, mask: maskArr };
   };
 }
@@ -1177,12 +1178,14 @@ function scenarioAdamOptimizerStep() {
   /**
    * Adam optimizer update step.
    * Most popular optimizer for deep learning.
+   * Uses in-place operations to minimize allocations.
    */
   const nParams = 100000;
   const params = randomVector(nParams);
   const grads = randomVector(nParams);
-  let m = zeros([nParams]); // First moment
-  let v = zeros([nParams]); // Second moment
+  const m = zeros([nParams]); // First moment
+  const v = zeros([nParams]); // Second moment
+  const grads_sq = zeros([nParams]); // Pre-allocate for grads²
   const lr = 0.001;
   const beta1 = 0.9;
   const beta2 = 0.999;
@@ -1190,13 +1193,22 @@ function scenarioAdamOptimizerStep() {
   let t = 1;
 
   return function adamStep() {
-    // Update biased moments: m = beta1 * m + (1 - beta1) * grads
-    m = add(multiply(m, beta1), multiply(grads, 1 - beta1));
-    // v = beta2 * v + (1 - beta2) * grads^2
-    v = add(multiply(v, beta2), multiply(multiply(grads, grads), 1 - beta2));
-    // Bias correction
+    // m = beta1 * m + (1 - beta1) * grads (in-place)
+    m.imul(beta1).iadd(multiply(grads, 1 - beta1));
+
+    // Compute grads² into pre-allocated buffer, then update v
+    // v = beta2 * v + (1 - beta2) * grads²
+    const gradsData = grads.data as Float64Array;
+    const gradsSqData = grads_sq.data as Float64Array;
+    for (let i = 0; i < nParams; i++) {
+      gradsSqData[i] = gradsData[i] * gradsData[i];
+    }
+    v.imul(beta2).iadd(multiply(grads_sq, 1 - beta2));
+
+    // Bias correction (need new arrays for these)
     const mHat = divide(m, 1 - Math.pow(beta1, t));
     const vHat = divide(v, 1 - Math.pow(beta2, t));
+
     // Update params: params - lr * m_hat / (sqrt(v_hat) + eps)
     const update = divide(mHat, add(sqrt(vHat), eps));
     const newParams = subtract(params, multiply(update, lr));

@@ -127,6 +127,11 @@ export interface MathModule {
   multiply(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
   divide(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
   power(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  // In-place operations (modifies first argument, returns same array)
+  add_inplace(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  subtract_inplace(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  multiply_inplace(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  divide_inplace(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
   sqrt(a: NativeNDArray): NativeNDArray;
   exp(a: NativeNDArray): NativeNDArray;
   log(a: NativeNDArray): NativeNDArray;
