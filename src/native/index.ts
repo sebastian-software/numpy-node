@@ -58,23 +58,25 @@ export {
   negative,
   zscore,
   corrcoef,
-  gram_matrix,
-  softmax,
-  pdist_sq,
-  affine,
-  row_divide,
-  xtx,
-  xty,
   percentile,
-  minmax_scale,
   kron,
   outer,
-  matrix_exp,
   axpby,
-  matvec,
-  norm_sq,
-  jacobi_step,
-  gradient_2d,
+  // Comparison operators
+  equal,
+  not_equal,
+  less,
+  less_equal,
+  greater,
+  greater_equal,
+  // Logical operators
+  logical_and,
+  logical_or,
+  logical_xor,
+  logical_not,
+  // Boolean reductions
+  any,
+  all,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)

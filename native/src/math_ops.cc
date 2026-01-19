@@ -1970,474 +1970,6 @@ Napi::Value Corrcoef(const Napi::CallbackInfo& info) {
 }
 
 /**
- * Gram matrix: X @ X.T
- * Uses dsyrk for efficient symmetric matrix computation.
- */
-Napi::Value GramMatrix(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 1) {
-        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    double* data = static_cast<double*>(a->data());
-    const auto& shape = a->shape();
-
-    if (shape.size() != 2) {
-        Napi::Error::New(env, "gram_matrix requires 2D array").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    int m = static_cast<int>(shape[0]);  // rows
-    int n = static_cast<int>(shape[1]);  // cols
-
-    // Result is m x m (X @ X.T)
-    Napi::Array jsShape = Napi::Array::New(env, 2);
-    jsShape.Set(uint32_t(0), Napi::Number::New(env, m));
-    jsShape.Set(uint32_t(1), Napi::Number::New(env, m));
-
-    Napi::Object result = NativeNDArray::constructor.New({
-        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
-    });
-    NativeNDArray* gramArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* gramData = static_cast<double*>(gramArr->data());
-
-#if defined(USE_ACCELERATE)
-    // dsyrk: C = alpha * A * A' + beta * C (when CblasNoTrans)
-    // For row-major X (m x n), A * A' gives m x m
-    cblas_dsyrk(CblasRowMajor, CblasUpper, CblasNoTrans,
-                m, n, 1.0, data, n, 0.0, gramData, m);
-
-    // Fill lower triangle
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < i; j++) {
-            gramData[i * m + j] = gramData[j * m + i];
-        }
-    }
-#else
-    // Pure C++ fallback: X @ X.T
-    for (int i = 0; i < m; i++) {
-        for (int j = i; j < m; j++) {
-            double sum = 0.0;
-            for (int k = 0; k < n; k++) {
-                sum += data[i * n + k] * data[j * n + k];
-            }
-            gramData[i * m + j] = sum;
-            gramData[j * m + i] = sum;
-        }
-    }
-#endif
-
-    return result;
-}
-
-/**
- * Fused softmax: exp(x) / sum(exp(x))
- * Computes softmax in a single native call with numerical stability.
- */
-Napi::Value Softmax(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 1) {
-        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    double* data = static_cast<double*>(a->data());
-    const auto& shape = a->shape();
-    int64_t size = a->size();
-
-    // Create result array with same shape
-    Napi::Array jsShape = Napi::Array::New(env, shape.size());
-    for (size_t i = 0; i < shape.size(); i++) {
-        jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
-    }
-
-    Napi::Object result = NativeNDArray::constructor.New({
-        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
-    });
-    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* resultData = static_cast<double*>(resultArr->data());
-
-    // Find max for numerical stability (subtract max before exp)
-    double maxVal = data[0];
-    for (int64_t i = 1; i < size; i++) {
-        if (data[i] > maxVal) maxVal = data[i];
-    }
-
-    // Compute exp(x - max) and sum
-    double sumExp = 0.0;
-    for (int64_t i = 0; i < size; i++) {
-        resultData[i] = std::exp(data[i] - maxVal);
-        sumExp += resultData[i];
-    }
-
-    // Normalize
-    double invSum = 1.0 / sumExp;
-    for (int64_t i = 0; i < size; i++) {
-        resultData[i] *= invSum;
-    }
-
-    return result;
-}
-
-/**
- * Pairwise squared Euclidean distances: D_ij = ||x_i - x_j||^2
- * Fuses row norms, gram matrix, and combination in one call.
- * Uses: ||x_i - x_j||^2 = ||x_i||^2 + ||x_j||^2 - 2 * x_i · x_j
- */
-Napi::Value PdistSq(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 1) {
-        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    double* data = static_cast<double*>(a->data());
-    const auto& shape = a->shape();
-
-    if (shape.size() != 2) {
-        Napi::Error::New(env, "pdist_sq requires 2D array").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    int m = static_cast<int>(shape[0]);  // points
-    int n = static_cast<int>(shape[1]);  // dimensions
-
-    // Step 1: Compute row norms ||x_i||^2
-    std::vector<double> rowNorms(m);
-#if defined(USE_ACCELERATE)
-    for (int i = 0; i < m; i++) {
-        vDSP_dotprD(data + i * n, 1, data + i * n, 1, &rowNorms[i], n);
-    }
-#else
-    for (int i = 0; i < m; i++) {
-        double sum = 0.0;
-        for (int j = 0; j < n; j++) {
-            double val = data[i * n + j];
-            sum += val * val;
-        }
-        rowNorms[i] = sum;
-    }
-#endif
-
-    // Step 2: Compute gram matrix (dot products) and combine
-    // Result D_ij = ||x_i||^2 + ||x_j||^2 - 2 * x_i · x_j
-    Napi::Array jsShape = Napi::Array::New(env, 2);
-    jsShape.Set(uint32_t(0), Napi::Number::New(env, m));
-    jsShape.Set(uint32_t(1), Napi::Number::New(env, m));
-
-    Napi::Object result = NativeNDArray::constructor.New({
-        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
-    });
-    NativeNDArray* distArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* distData = static_cast<double*>(distArr->data());
-
-#if defined(USE_ACCELERATE)
-    // First compute gram matrix using dsyrk: G = X @ X.T
-    cblas_dsyrk(CblasRowMajor, CblasUpper, CblasNoTrans,
-                m, n, 1.0, data, n, 0.0, distData, m);
-
-    // Now combine: D_ij = rowNorms[i] + rowNorms[j] - 2 * G_ij
-    // Only upper triangle was computed by dsyrk
-    for (int i = 0; i < m; i++) {
-        for (int j = i; j < m; j++) {
-            double d = rowNorms[i] + rowNorms[j] - 2.0 * distData[i * m + j];
-            // Clamp to 0 to handle numerical precision issues
-            distData[i * m + j] = (d > 0.0) ? d : 0.0;
-            distData[j * m + i] = distData[i * m + j];
-        }
-    }
-#else
-    // Pure C++ fallback
-    for (int i = 0; i < m; i++) {
-        for (int j = i; j < m; j++) {
-            double dotprod = 0.0;
-            for (int k = 0; k < n; k++) {
-                dotprod += data[i * n + k] * data[j * n + k];
-            }
-            double d = rowNorms[i] + rowNorms[j] - 2.0 * dotprod;
-            distData[i * m + j] = (d > 0.0) ? d : 0.0;
-            distData[j * m + i] = distData[i * m + j];
-        }
-    }
-#endif
-
-    return result;
-}
-
-/**
- * Affine transform: gamma * x + beta (fused multiply-add with broadcasting)
- * Common in layer normalization and batch normalization.
- * Input: x [m, n], gamma [n], beta [n]
- * Output: [m, n] where result[i, j] = gamma[j] * x[i, j] + beta[j]
- */
-Napi::Value Affine(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 3) {
-        Napi::TypeError::New(env, "Expected three arrays (x, gamma, beta)").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    NativeNDArray* gamma = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
-    NativeNDArray* beta = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[2].As<Napi::Object>());
-
-    const auto& shapeX = x->shape();
-    const auto& shapeG = gamma->shape();
-    const auto& shapeB = beta->shape();
-
-    if (shapeX.size() != 2 || shapeG.size() != 1 || shapeB.size() != 1) {
-        Napi::Error::New(env, "affine expects x [m,n], gamma [n], beta [n]").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    int64_t m = shapeX[0];
-    int64_t n = shapeX[1];
-
-    if (shapeG[0] != n || shapeB[0] != n) {
-        Napi::Error::New(env, "gamma and beta must have same size as x's columns").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    double* dataX = static_cast<double*>(x->data());
-    double* dataG = static_cast<double*>(gamma->data());
-    double* dataB = static_cast<double*>(beta->data());
-
-    Napi::Array jsShape = Napi::Array::New(env, 2);
-    jsShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(m)));
-    jsShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(n)));
-
-    Napi::Object result = NativeNDArray::constructor.New({
-        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
-    });
-    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* dataR = static_cast<double*>(resultArr->data());
-
-    // Fused multiply-add: result[i,j] = gamma[j] * x[i,j] + beta[j]
-    for (int64_t i = 0; i < m; i++) {
-        for (int64_t j = 0; j < n; j++) {
-            dataR[i * n + j] = dataG[j] * dataX[i * n + j] + dataB[j];
-        }
-    }
-
-    return result;
-}
-
-/**
- * Row-wise division: result[i,j] = x[i,j] / scales[i]
- * Useful for normalizing vectors.
- * Input: x [m, n], scales [m]
- * Output: [m, n]
- */
-Napi::Value RowDivide(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 2) {
-        Napi::TypeError::New(env, "Expected two arrays (x, scales)").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    NativeNDArray* scales = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
-
-    const auto& shapeX = x->shape();
-    const auto& shapeS = scales->shape();
-
-    if (shapeX.size() != 2 || shapeS.size() != 1) {
-        Napi::Error::New(env, "row_divide expects x [m,n], scales [m]").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    int64_t m = shapeX[0];
-    int64_t n = shapeX[1];
-
-    if (shapeS[0] != m) {
-        Napi::Error::New(env, "scales must have same length as x's rows").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    double* dataX = static_cast<double*>(x->data());
-    double* dataS = static_cast<double*>(scales->data());
-
-    Napi::Array jsShape = Napi::Array::New(env, 2);
-    jsShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(m)));
-    jsShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(n)));
-
-    Napi::Object result = NativeNDArray::constructor.New({
-        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
-    });
-    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* dataR = static_cast<double*>(resultArr->data());
-
-    // Row-wise division with loop unrolling
-    for (int64_t i = 0; i < m; i++) {
-        double invScale = 1.0 / dataS[i];  // Pre-compute reciprocal
-        const double* rowX = dataX + i * n;
-        double* rowR = dataR + i * n;
-        int64_t j = 0;
-        // Unroll by 4
-        for (; j + 3 < n; j += 4) {
-            rowR[j] = rowX[j] * invScale;
-            rowR[j+1] = rowX[j+1] * invScale;
-            rowR[j+2] = rowX[j+2] * invScale;
-            rowR[j+3] = rowX[j+3] * invScale;
-        }
-        for (; j < n; j++) {
-            rowR[j] = rowX[j] * invScale;
-        }
-    }
-
-    return result;
-}
-
-/**
- * X.T @ X without explicit transpose.
- * Uses BLAS dsyrk for efficient symmetric matrix computation.
- * Input: X [m, n]
- * Output: [n, n] symmetric matrix = X.T @ X
- */
-Napi::Value Xtx(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 1) {
-        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    const auto& shape = x->shape();
-
-    if (shape.size() != 2) {
-        Napi::Error::New(env, "xtx expects 2D array").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    int m = static_cast<int>(shape[0]);
-    int n = static_cast<int>(shape[1]);
-    double* dataX = static_cast<double*>(x->data());
-
-    Napi::Array jsShape = Napi::Array::New(env, 2);
-    jsShape.Set(uint32_t(0), Napi::Number::New(env, n));
-    jsShape.Set(uint32_t(1), Napi::Number::New(env, n));
-
-    Napi::Object result = NativeNDArray::constructor.New({
-        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
-    });
-    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* dataR = static_cast<double*>(resultArr->data());
-
-#if defined(USE_ACCELERATE)
-    // dsyrk: C = alpha * A.T @ A + beta * C (CblasTrans means transpose A)
-    // We want X.T @ X, so we use CblasTrans
-    cblas_dsyrk(CblasRowMajor, CblasUpper, CblasTrans,
-                n, m, 1.0, dataX, n, 0.0, dataR, n);
-
-    // Fill lower triangle (dsyrk only fills upper)
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < i; j++) {
-            dataR[i * n + j] = dataR[j * n + i];
-        }
-    }
-#else
-    // Pure C++ fallback: X.T @ X
-    for (int i = 0; i < n; i++) {
-        for (int j = i; j < n; j++) {
-            double sum = 0.0;
-            for (int k = 0; k < m; k++) {
-                sum += dataX[k * n + i] * dataX[k * n + j];
-            }
-            dataR[i * n + j] = sum;
-            dataR[j * n + i] = sum;
-        }
-    }
-#endif
-
-    return result;
-}
-
-/**
- * X.T @ y without explicit transpose.
- * Uses BLAS dgemv for efficient matrix-vector multiplication.
- * Input: X [m, n], y [m] or [m, 1]
- * Output: [n] or [n, 1]
- */
-Napi::Value Xty(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 2) {
-        Napi::TypeError::New(env, "Expected two arrays (X, y)").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    NativeNDArray* y = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
-
-    const auto& shapeX = x->shape();
-    const auto& shapeY = y->shape();
-
-    if (shapeX.size() != 2) {
-        Napi::Error::New(env, "xty expects X to be 2D").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    int m = static_cast<int>(shapeX[0]);
-    int n = static_cast<int>(shapeX[1]);
-
-    // y can be [m] or [m, 1]
-    bool yIs2D = (shapeY.size() == 2);
-    int yLen = yIs2D ? static_cast<int>(shapeY[0]) : static_cast<int>(shapeY[0]);
-
-    if (yLen != m) {
-        Napi::Error::New(env, "X rows must match y length").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    double* dataX = static_cast<double*>(x->data());
-    double* dataY = static_cast<double*>(y->data());
-
-    // Create result with same dimensionality as y
-    Napi::Array jsShape;
-    if (yIs2D) {
-        jsShape = Napi::Array::New(env, 2);
-        jsShape.Set(uint32_t(0), Napi::Number::New(env, n));
-        jsShape.Set(uint32_t(1), Napi::Number::New(env, 1));
-    } else {
-        jsShape = Napi::Array::New(env, 1);
-        jsShape.Set(uint32_t(0), Napi::Number::New(env, n));
-    }
-
-    Napi::Object result = NativeNDArray::constructor.New({
-        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
-    });
-    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* dataR = static_cast<double*>(resultArr->data());
-
-#if defined(USE_ACCELERATE)
-    // dgemv: y = alpha * A.T @ x + beta * y (CblasTrans means transpose A)
-    cblas_dgemv(CblasRowMajor, CblasTrans,
-                m, n, 1.0, dataX, n, dataY, 1, 0.0, dataR, 1);
-#else
-    // Pure C++ fallback: X.T @ y
-    for (int i = 0; i < n; i++) {
-        double sum = 0.0;
-        for (int k = 0; k < m; k++) {
-            sum += dataX[k * n + i] * dataY[k];
-        }
-        dataR[i] = sum;
-    }
-#endif
-
-    return result;
-}
-
-/**
  * Quickselect algorithm - O(n) average case to find k-th smallest element
  * Modifies the array in-place (partial sort)
  */
@@ -2609,142 +2141,6 @@ Napi::Value Percentile(const Napi::CallbackInfo& info) {
 
     Napi::Error::New(env, "Unsupported axis for percentile").ThrowAsJavaScriptException();
     return env.Undefined();
-}
-
-/**
- * Min-max scaling: (X - min) / (max - min) along axis
- * Fused operation that computes min, max, and scales in a single pass.
- * minmax_scale(data, axis=0) - axis=0 scales along columns (common for features)
- */
-Napi::Value MinMaxScale(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 1) {
-        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    NativeNDArray* arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-
-    // Ensure contiguous data
-    Napi::Object contiguousCopy;
-    if (!arr->is_contiguous()) {
-        contiguousCopy = arr->AsContiguous(info).As<Napi::Object>();
-        arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(contiguousCopy);
-    }
-
-    // Get axis (default: 0 for column-wise scaling)
-    int axis = 0;
-    if (info.Length() >= 2 && !info[1].IsUndefined()) {
-        axis = info[1].As<Napi::Number>().Int32Value();
-    }
-
-    const auto& shape = arr->shape();
-    double* data = static_cast<double*>(arr->data());
-
-    if (shape.size() != 2) {
-        Napi::Error::New(env, "minmax_scale requires 2D array").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    int64_t rows = shape[0];
-    int64_t cols = shape[1];
-
-    // Create result array with same shape
-    Napi::Array resultShape = Napi::Array::New(env, 2);
-    resultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
-    resultShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(cols)));
-
-    Napi::Object result = NativeNDArray::constructor.New({
-        resultShape,
-        Napi::String::New(env, "float64"),
-        Napi::Boolean::New(env, true)
-    });
-    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* resultData = static_cast<double*>(resultArr->data());
-
-    if (axis == 0) {
-        // Scale along columns (each column independently)
-        // First pass: compute min and max for each column
-        std::vector<double> minVals(cols, std::numeric_limits<double>::max());
-        std::vector<double> maxVals(cols, std::numeric_limits<double>::lowest());
-
-        for (int64_t row = 0; row < rows; row++) {
-            const double* rowData = data + row * cols;
-            int64_t col = 0;
-            // Unroll by 4 for better performance
-            for (; col + 3 < cols; col += 4) {
-                double v0 = rowData[col], v1 = rowData[col+1], v2 = rowData[col+2], v3 = rowData[col+3];
-                if (v0 < minVals[col]) minVals[col] = v0;
-                if (v0 > maxVals[col]) maxVals[col] = v0;
-                if (v1 < minVals[col+1]) minVals[col+1] = v1;
-                if (v1 > maxVals[col+1]) maxVals[col+1] = v1;
-                if (v2 < minVals[col+2]) minVals[col+2] = v2;
-                if (v2 > maxVals[col+2]) maxVals[col+2] = v2;
-                if (v3 < minVals[col+3]) minVals[col+3] = v3;
-                if (v3 > maxVals[col+3]) maxVals[col+3] = v3;
-            }
-            for (; col < cols; col++) {
-                double val = rowData[col];
-                if (val < minVals[col]) minVals[col] = val;
-                if (val > maxVals[col]) maxVals[col] = val;
-            }
-        }
-
-        // Pre-compute scales (1/range) to replace division with multiplication
-        std::vector<double> scales(cols);
-        for (int64_t col = 0; col < cols; col++) {
-            double range = maxVals[col] - minVals[col];
-            scales[col] = (range > 1e-10) ? 1.0 / range : 0.0;
-        }
-
-        // Second pass: scale the data using multiplication
-        for (int64_t row = 0; row < rows; row++) {
-            const double* rowData = data + row * cols;
-            double* outRow = resultData + row * cols;
-            int64_t col = 0;
-            // Unroll by 4 for better performance
-            for (; col + 3 < cols; col += 4) {
-                outRow[col] = (rowData[col] - minVals[col]) * scales[col];
-                outRow[col+1] = (rowData[col+1] - minVals[col+1]) * scales[col+1];
-                outRow[col+2] = (rowData[col+2] - minVals[col+2]) * scales[col+2];
-                outRow[col+3] = (rowData[col+3] - minVals[col+3]) * scales[col+3];
-            }
-            for (; col < cols; col++) {
-                outRow[col] = (rowData[col] - minVals[col]) * scales[col];
-            }
-        }
-    } else if (axis == 1) {
-        // Scale along rows (each row independently)
-        for (int64_t row = 0; row < rows; row++) {
-            // Find min and max for this row
-            double minVal = std::numeric_limits<double>::max();
-            double maxVal = std::numeric_limits<double>::lowest();
-
-            for (int64_t col = 0; col < cols; col++) {
-                double val = data[row * cols + col];
-                if (val < minVal) minVal = val;
-                if (val > maxVal) maxVal = val;
-            }
-
-            double range = maxVal - minVal;
-
-            // Scale this row
-            for (int64_t col = 0; col < cols; col++) {
-                double val = data[row * cols + col];
-                if (range > 1e-10) {
-                    resultData[row * cols + col] = (val - minVal) / range;
-                } else {
-                    resultData[row * cols + col] = 0.0;
-                }
-            }
-        }
-    } else {
-        Napi::Error::New(env, "Unsupported axis for minmax_scale").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
-
-    return result;
 }
 
 /**
@@ -2930,123 +2326,6 @@ Napi::Value Outer(const Napi::CallbackInfo& info) {
 }
 
 /**
- * Matrix exponential using Taylor series: exp(A) = I + A + A²/2! + A³/3! + ...
- * Uses in-place accumulation and BLAS dgemm for efficient computation.
- * @param a Input square matrix
- * @param numTerms Number of Taylor series terms (default 10)
- * @returns exp(A)
- */
-Napi::Value MatrixExp(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if (info.Length() < 1) {
-        Napi::TypeError::New(env, "Expected 1-2 arguments").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-
-    // Check that input is a square 2D matrix
-    if (a->ndim() != 2 || a->shape()[0] != a->shape()[1]) {
-        Napi::TypeError::New(env, "Input must be a square 2D matrix").ThrowAsJavaScriptException();
-        return env.Null();
-    }
-
-    int64_t n = a->shape()[0];
-    int numTerms = 10; // Default number of terms
-
-    if (info.Length() >= 2 && info[1].IsNumber()) {
-        numTerms = info[1].As<Napi::Number>().Int32Value();
-        if (numTerms < 1) numTerms = 1;
-        if (numTerms > 50) numTerms = 50; // Cap at 50 for safety
-    }
-
-    // Ensure contiguous
-    Napi::Object aCopy;
-    if (!a->is_contiguous()) {
-        aCopy = a->AsContiguous(info).As<Napi::Object>();
-        a = Napi::ObjectWrap<NativeNDArray>::Unwrap(aCopy);
-    }
-
-    const double* aData = static_cast<const double*>(a->data());
-
-    // Create result array initialized to identity matrix
-    Napi::Array resultShape = Napi::Array::New(env, 2);
-    resultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(n)));
-    resultShape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(n)));
-
-    Napi::Object result = NativeNDArray::constructor.New({
-        resultShape,
-        Napi::String::New(env, "float64"),
-        Napi::Boolean::New(env, true)
-    });
-    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* resultData = static_cast<double*>(resultArr->data());
-
-    // Allocate working arrays
-    std::vector<double> term(n * n);      // Current term: A^k / k!
-    std::vector<double> temp(n * n);      // Temporary for matmul
-
-    // Initialize result to identity (I)
-    std::memset(resultData, 0, n * n * sizeof(double));
-    for (int64_t i = 0; i < n; i++) {
-        resultData[i * n + i] = 1.0;
-    }
-
-    // Initialize term to A (first power)
-    std::memcpy(term.data(), aData, n * n * sizeof(double));
-
-    // result = I + A (k=1 term)
-    for (int64_t i = 0; i < n * n; i++) {
-        resultData[i] += term[i];
-    }
-
-    // Add remaining terms: A^k / k! for k = 2 to numTerms
-    for (int k = 2; k <= numTerms; k++) {
-        // Compute term = term * A using BLAS dgemm
-#if defined(USE_ACCELERATE)
-        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                    static_cast<int>(n), static_cast<int>(n), static_cast<int>(n),
-                    1.0, term.data(), static_cast<int>(n),
-                    aData, static_cast<int>(n),
-                    0.0, temp.data(), static_cast<int>(n));
-#elif defined(USE_OPENBLAS)
-        char transA = 'N', transB = 'N';
-        double alpha = 1.0, beta = 0.0;
-        int ni = static_cast<int>(n);
-        // For row-major: swap A and B, swap output dimensions
-        dgemm_(&transA, &transB, &ni, &ni, &ni,
-               &alpha, aData, &ni, term.data(), &ni,
-               &beta, temp.data(), &ni);
-#else
-        // Pure C++ fallback
-        std::memset(temp.data(), 0, n * n * sizeof(double));
-        for (int64_t i = 0; i < n; i++) {
-            for (int64_t l = 0; l < n; l++) {
-                double t_il = term[i * n + l];
-                for (int64_t j = 0; j < n; j++) {
-                    temp[i * n + j] += t_il * aData[l * n + j];
-                }
-            }
-        }
-#endif
-
-        // term = temp / k
-        double invK = 1.0 / static_cast<double>(k);
-        for (int64_t i = 0; i < n * n; i++) {
-            term[i] = temp[i] * invK;
-        }
-
-        // result += term
-        for (int64_t i = 0; i < n * n; i++) {
-            resultData[i] += term[i];
-        }
-    }
-
-    return result;
-}
-
-/**
  * BLAS-style axpby: result = alpha*x + beta*y
  * Fuses scalar multiply and addition into one operation.
  * If y is not provided, computes alpha*x (scalar multiply).
@@ -3127,367 +2406,519 @@ Napi::Value Axpby(const Napi::CallbackInfo& info) {
     return result;
 }
 
-/**
- * Compute squared L2 norms along an axis.
- * norm_sq[i] = sum(x[i,:]^2) for axis=1
- * norm_sq[j] = sum(x[:,j]^2) for axis=0
- * Fuses multiply and sum into one operation.
- */
-Napi::Value NormSq(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
+// ============================================================
+// Helper: Get element as double (for multi-dtype comparison)
+// ============================================================
 
-    if (info.Length() < 1) {
-        Napi::TypeError::New(env, "Expected at least 1 argument").ThrowAsJavaScriptException();
-        return env.Null();
+static double getElementAsDouble(NativeNDArray* arr, int64_t i) {
+    switch (arr->dtype()) {
+        case DType::Float64:
+            return static_cast<double*>(arr->data())[i];
+        case DType::Float32:
+            return static_cast<float*>(arr->data())[i];
+        case DType::Int32:
+            return static_cast<double>(static_cast<int32_t*>(arr->data())[i]);
+        case DType::Int64:
+            return static_cast<double>(static_cast<int64_t*>(arr->data())[i]);
+        case DType::Bool:
+        case DType::Uint8:
+            return static_cast<double>(static_cast<uint8_t*>(arr->data())[i]);
+        default:
+            return static_cast<double*>(arr->data())[i];
     }
-
-    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-
-    // Default axis = -1 (flatten and compute total)
-    int axis = -1;
-    if (info.Length() >= 2 && info[1].IsNumber()) {
-        axis = info[1].As<Napi::Number>().Int32Value();
-    }
-
-    // Ensure contiguous
-    Napi::Object xCopy;
-    if (!x->is_contiguous()) {
-        xCopy = x->AsContiguous(info).As<Napi::Object>();
-        x = Napi::ObjectWrap<NativeNDArray>::Unwrap(xCopy);
-    }
-
-    const double* xData = static_cast<const double*>(x->data());
-
-    if (x->ndim() != 2) {
-        // For 1D, just compute sum of squares
-        int64_t n = x->size();
-        double sum = 0.0;
-        for (int64_t i = 0; i < n; i++) {
-            sum += xData[i] * xData[i];
-        }
-        return Napi::Number::New(env, sum);
-    }
-
-    int64_t rows = x->shape()[0];
-    int64_t cols = x->shape()[1];
-
-    if (axis == 1 || axis == -1) {
-        // Row-wise norms: output shape [rows]
-        Napi::Array resultShape = Napi::Array::New(env, 1);
-        resultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
-
-        Napi::Object result = NativeNDArray::constructor.New({
-            resultShape,
-            Napi::String::New(env, "float64"),
-            Napi::Boolean::New(env, true)
-        });
-        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-        double* resultData = static_cast<double*>(resultArr->data());
-
-        for (int64_t i = 0; i < rows; i++) {
-            double sum = 0.0;
-            const double* row = xData + i * cols;
-            // Unrolled loop
-            int64_t j = 0;
-            for (; j + 3 < cols; j += 4) {
-                sum += row[j] * row[j] + row[j+1] * row[j+1] +
-                       row[j+2] * row[j+2] + row[j+3] * row[j+3];
-            }
-            for (; j < cols; j++) {
-                sum += row[j] * row[j];
-            }
-            resultData[i] = sum;
-        }
-        return result;
-    } else if (axis == 0) {
-        // Column-wise norms: output shape [cols]
-        Napi::Array resultShape = Napi::Array::New(env, 1);
-        resultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(cols)));
-
-        Napi::Object result = NativeNDArray::constructor.New({
-            resultShape,
-            Napi::String::New(env, "float64"),
-            Napi::Boolean::New(env, true)
-        });
-        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-        double* resultData = static_cast<double*>(resultArr->data());
-
-        std::memset(resultData, 0, cols * sizeof(double));
-        for (int64_t i = 0; i < rows; i++) {
-            const double* row = xData + i * cols;
-            for (int64_t j = 0; j < cols; j++) {
-                resultData[j] += row[j] * row[j];
-            }
-        }
-        return result;
-    }
-
-    Napi::Error::New(env, "Invalid axis").ThrowAsJavaScriptException();
-    return env.Null();
 }
 
-/**
- * Matrix-vector multiply with optional norm computation.
- * Computes y = A @ x and optionally returns ||y||.
- * Used in power iteration and similar algorithms.
- */
-Napi::Value Matvec(const Napi::CallbackInfo& info) {
+// ============================================================
+// Helper: Get element as bool (for logical operations)
+// ============================================================
+
+static bool getElementAsBool(NativeNDArray* arr, int64_t i) {
+    switch (arr->dtype()) {
+        case DType::Float64:
+            return static_cast<double*>(arr->data())[i] != 0.0;
+        case DType::Float32:
+            return static_cast<float*>(arr->data())[i] != 0.0f;
+        case DType::Int32:
+            return static_cast<int32_t*>(arr->data())[i] != 0;
+        case DType::Int64:
+            return static_cast<int64_t*>(arr->data())[i] != 0;
+        case DType::Bool:
+        case DType::Uint8:
+            return static_cast<uint8_t*>(arr->data())[i] != 0;
+        default:
+            return static_cast<double*>(arr->data())[i] != 0.0;
+    }
+}
+
+// ============================================================
+// Comparison Operators (produce bool arrays)
+// ============================================================
+
+template<typename CmpOp>
+Napi::Value ComparisonOp(const Napi::CallbackInfo& info, CmpOp cmp) {
     Napi::Env env = info.Env();
 
     if (info.Length() < 2) {
-        Napi::TypeError::New(env, "Expected 2 arguments: A, x").ThrowAsJavaScriptException();
-        return env.Null();
+        Napi::TypeError::New(env, "Expected two arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
-    NativeNDArray* A = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    const auto& shapeA = a->shape();
+    bool bIsScalar = info[1].IsNumber();
 
-    // Ensure contiguous
-    Napi::Object ACopy, xCopy;
-    if (!A->is_contiguous()) {
-        ACopy = A->AsContiguous(info).As<Napi::Object>();
-        A = Napi::ObjectWrap<NativeNDArray>::Unwrap(ACopy);
+    if (bIsScalar) {
+        double scalar = info[1].As<Napi::Number>().DoubleValue();
+        int64_t size = a->size();
+
+        Napi::Array jsShape = Napi::Array::New(env, shapeA.size());
+        for (size_t i = 0; i < shapeA.size(); i++) {
+            jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shapeA[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            jsShape,
+            Napi::String::New(env, "bool"),
+            Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        uint8_t* dataC = static_cast<uint8_t*>(c->data());
+
+        for (int64_t i = 0; i < size; i++) {
+            double valA = getElementAsDouble(a, i);
+            dataC[i] = cmp(valA, scalar) ? 1 : 0;
+        }
+        return result;
     }
-    if (!x->is_contiguous()) {
-        xCopy = x->AsContiguous(info).As<Napi::Object>();
-        x = Napi::ObjectWrap<NativeNDArray>::Unwrap(xCopy);
+
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+    const auto& shapeB = b->shape();
+
+    // Fast path: same shape
+    if (shapeA == shapeB) {
+        int64_t size = a->size();
+
+        Napi::Array jsShape = Napi::Array::New(env, shapeA.size());
+        for (size_t i = 0; i < shapeA.size(); i++) {
+            jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shapeA[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            jsShape,
+            Napi::String::New(env, "bool"),
+            Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        uint8_t* dataC = static_cast<uint8_t*>(c->data());
+
+        for (int64_t i = 0; i < size; i++) {
+            double valA = getElementAsDouble(a, i);
+            double valB = getElementAsDouble(b, i);
+            dataC[i] = cmp(valA, valB) ? 1 : 0;
+        }
+        return result;
     }
 
-    if (A->ndim() != 2) {
-        Napi::TypeError::New(env, "A must be a 2D matrix").ThrowAsJavaScriptException();
-        return env.Null();
+    // Broadcasting case
+    std::vector<int64_t> resultShape = computeBroadcastShape(shapeA, shapeB);
+    if (resultShape.empty()) {
+        Napi::Error::New(env, "Shapes are not broadcastable").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
-    int64_t m = A->shape()[0];
-    int64_t n = A->shape()[1];
-    int64_t xSize = x->size();
-
-    if (xSize != n) {
-        Napi::TypeError::New(env, "Dimension mismatch: A columns must match x size").ThrowAsJavaScriptException();
-        return env.Null();
+    Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+    for (size_t i = 0; i < resultShape.size(); i++) {
+        jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
     }
-
-    const double* AData = static_cast<const double*>(A->data());
-    const double* xData = static_cast<const double*>(x->data());
-
-    // Create result vector
-    Napi::Array resultShape = Napi::Array::New(env, 1);
-    resultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(m)));
 
     Napi::Object result = NativeNDArray::constructor.New({
-        resultShape,
-        Napi::String::New(env, "float64"),
+        jsResultShape,
+        Napi::String::New(env, "bool"),
         Napi::Boolean::New(env, true)
     });
-    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* resultData = static_cast<double*>(resultArr->data());
+    NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    uint8_t* dataC = static_cast<uint8_t*>(c->data());
 
-#if defined(USE_ACCELERATE)
-    cblas_dgemv(CblasRowMajor, CblasNoTrans,
-                static_cast<int>(m), static_cast<int>(n),
-                1.0, AData, static_cast<int>(n),
-                xData, 1,
-                0.0, resultData, 1);
-#elif defined(USE_OPENBLAS)
-    // OpenBLAS FORTRAN interface
-    char trans = 'T';  // Transpose because FORTRAN is column-major
-    int mi = static_cast<int>(m);
-    int ni = static_cast<int>(n);
-    double alpha = 1.0, beta = 0.0;
-    int incx = 1, incy = 1;
-    // For row-major A, treat as column-major A^T
-    dgemv_(&trans, &ni, &mi, &alpha, AData, &ni, xData, &incx, &beta, resultData, &incy);
-#else
-    // Pure C++ fallback
-    for (int64_t i = 0; i < m; i++) {
-        double sum = 0.0;
-        const double* row = AData + i * n;
-        for (int64_t j = 0; j < n; j++) {
-            sum += row[j] * xData[j];
-        }
-        resultData[i] = sum;
+    int64_t totalSize = 1;
+    for (int64_t dim : resultShape) {
+        totalSize *= dim;
     }
-#endif
+
+    std::vector<int64_t> paddedShapeA(resultShape.size(), 1);
+    std::vector<int64_t> paddedShapeB(resultShape.size(), 1);
+    for (size_t i = 0; i < shapeA.size(); i++) {
+        paddedShapeA[resultShape.size() - shapeA.size() + i] = shapeA[i];
+    }
+    for (size_t i = 0; i < shapeB.size(); i++) {
+        paddedShapeB[resultShape.size() - shapeB.size() + i] = shapeB[i];
+    }
+
+    std::vector<int64_t> indices(resultShape.size(), 0);
+    for (int64_t flatIdx = 0; flatIdx < totalSize; flatIdx++) {
+        int64_t temp = flatIdx;
+        for (int i = static_cast<int>(resultShape.size()) - 1; i >= 0; i--) {
+            indices[i] = temp % resultShape[i];
+            temp /= resultShape[i];
+        }
+
+        int64_t idxA = computeBroadcastIndex(indices, paddedShapeA);
+        int64_t idxB = computeBroadcastIndex(indices, paddedShapeB);
+
+        double valA = getElementAsDouble(a, idxA);
+        double valB = getElementAsDouble(b, idxB);
+        dataC[flatIdx] = cmp(valA, valB) ? 1 : 0;
+    }
 
     return result;
 }
 
-/**
- * Fused Jacobi iteration step: x_new = (b - R @ x) / D
- * Combines matvec, subtract, and element-wise divide in one native call.
- * @param R Matrix (n x n) - the off-diagonal part of A
- * @param x Current solution vector (n)
- * @param b Right-hand side vector (n)
- * @param D Diagonal elements of A (n)
- * @returns Updated solution vector (n)
- */
-Napi::Value JacobiStep(const Napi::CallbackInfo& info) {
+Napi::Value Equal(const Napi::CallbackInfo& info) {
+    return ComparisonOp(info, [](double a, double b) { return a == b; });
+}
+
+Napi::Value NotEqual(const Napi::CallbackInfo& info) {
+    return ComparisonOp(info, [](double a, double b) { return a != b; });
+}
+
+Napi::Value Less(const Napi::CallbackInfo& info) {
+    return ComparisonOp(info, [](double a, double b) { return a < b; });
+}
+
+Napi::Value LessEqual(const Napi::CallbackInfo& info) {
+    return ComparisonOp(info, [](double a, double b) { return a <= b; });
+}
+
+Napi::Value Greater(const Napi::CallbackInfo& info) {
+    return ComparisonOp(info, [](double a, double b) { return a > b; });
+}
+
+Napi::Value GreaterEqual(const Napi::CallbackInfo& info) {
+    return ComparisonOp(info, [](double a, double b) { return a >= b; });
+}
+
+// ============================================================
+// Logical Operators (produce bool arrays, with broadcasting)
+// ============================================================
+
+template<typename LogicOp>
+Napi::Value LogicalBinaryOp(const Napi::CallbackInfo& info, LogicOp op) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 4) {
-        Napi::TypeError::New(env, "Expected 4 arguments: R, x, b, D").ThrowAsJavaScriptException();
-        return env.Null();
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected two arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
-    NativeNDArray* R = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
-    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
-    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[2].As<Napi::Object>());
-    NativeNDArray* D = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[3].As<Napi::Object>());
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+    const auto& shapeA = a->shape();
+    const auto& shapeB = b->shape();
 
-    if (R->ndim() != 2 || x->ndim() != 1 || b->ndim() != 1 || D->ndim() != 1) {
-        Napi::TypeError::New(env, "Expected R [n,n], x [n], b [n], D [n]").ThrowAsJavaScriptException();
-        return env.Null();
+    // Fast path: same shape
+    if (shapeA == shapeB) {
+        int64_t size = a->size();
+
+        Napi::Array jsShape = Napi::Array::New(env, shapeA.size());
+        for (size_t i = 0; i < shapeA.size(); i++) {
+            jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shapeA[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            jsShape,
+            Napi::String::New(env, "bool"),
+            Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        uint8_t* dataC = static_cast<uint8_t*>(c->data());
+
+        for (int64_t i = 0; i < size; i++) {
+            bool valA = getElementAsBool(a, i);
+            bool valB = getElementAsBool(b, i);
+            dataC[i] = op(valA, valB) ? 1 : 0;
+        }
+        return result;
     }
 
-    int64_t n = R->shape()[0];
-    if (R->shape()[1] != n || x->size() != n || b->size() != n || D->size() != n) {
-        Napi::TypeError::New(env, "Dimension mismatch").ThrowAsJavaScriptException();
-        return env.Null();
+    // Broadcasting case
+    std::vector<int64_t> resultShape = computeBroadcastShape(shapeA, shapeB);
+    if (resultShape.empty()) {
+        Napi::Error::New(env, "Shapes are not broadcastable").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
-    const double* RData = static_cast<const double*>(R->data());
-    const double* xData = static_cast<const double*>(x->data());
-    const double* bData = static_cast<const double*>(b->data());
-    const double* DData = static_cast<const double*>(D->data());
-
-    // Create result vector
-    Napi::Array resultShape = Napi::Array::New(env, 1);
-    resultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(n)));
+    Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+    for (size_t i = 0; i < resultShape.size(); i++) {
+        jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+    }
 
     Napi::Object result = NativeNDArray::constructor.New({
-        resultShape,
-        Napi::String::New(env, "float64"),
+        jsResultShape,
+        Napi::String::New(env, "bool"),
         Napi::Boolean::New(env, true)
     });
-    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    double* resultData = static_cast<double*>(resultArr->data());
+    NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    uint8_t* dataC = static_cast<uint8_t*>(c->data());
 
-    // Temporary for R @ x
-    std::vector<double> Rx(n);
+    int64_t totalSize = 1;
+    for (int64_t dim : resultShape) {
+        totalSize *= dim;
+    }
 
-#if defined(USE_ACCELERATE)
-    // Compute Rx = R @ x using BLAS dgemv
-    cblas_dgemv(CblasRowMajor, CblasNoTrans,
-                static_cast<int>(n), static_cast<int>(n),
-                1.0, RData, static_cast<int>(n),
-                xData, 1,
-                0.0, Rx.data(), 1);
-#elif defined(USE_OPENBLAS)
-    char trans = 'T';
-    int ni = static_cast<int>(n);
-    double alpha = 1.0, beta = 0.0;
-    int inc = 1;
-    dgemv_(&trans, &ni, &ni, &alpha, RData, &ni, xData, &inc, &beta, Rx.data(), &inc);
-#else
-    // Pure C++ fallback
-    for (int64_t i = 0; i < n; i++) {
-        double sum = 0.0;
-        const double* row = RData + i * n;
-        for (int64_t j = 0; j < n; j++) {
-            sum += row[j] * xData[j];
+    std::vector<int64_t> paddedShapeA(resultShape.size(), 1);
+    std::vector<int64_t> paddedShapeB(resultShape.size(), 1);
+    for (size_t i = 0; i < shapeA.size(); i++) {
+        paddedShapeA[resultShape.size() - shapeA.size() + i] = shapeA[i];
+    }
+    for (size_t i = 0; i < shapeB.size(); i++) {
+        paddedShapeB[resultShape.size() - shapeB.size() + i] = shapeB[i];
+    }
+
+    std::vector<int64_t> indices(resultShape.size(), 0);
+    for (int64_t flatIdx = 0; flatIdx < totalSize; flatIdx++) {
+        int64_t temp = flatIdx;
+        for (int i = static_cast<int>(resultShape.size()) - 1; i >= 0; i--) {
+            indices[i] = temp % resultShape[i];
+            temp /= resultShape[i];
         }
-        Rx[i] = sum;
-    }
-#endif
 
-    // Compute result = (b - Rx) / D with loop unrolling
-    int64_t i = 0;
-    for (; i + 3 < n; i += 4) {
-        resultData[i] = (bData[i] - Rx[i]) / DData[i];
-        resultData[i+1] = (bData[i+1] - Rx[i+1]) / DData[i+1];
-        resultData[i+2] = (bData[i+2] - Rx[i+2]) / DData[i+2];
-        resultData[i+3] = (bData[i+3] - Rx[i+3]) / DData[i+3];
-    }
-    for (; i < n; i++) {
-        resultData[i] = (bData[i] - Rx[i]) / DData[i];
+        int64_t idxA = computeBroadcastIndex(indices, paddedShapeA);
+        int64_t idxB = computeBroadcastIndex(indices, paddedShapeB);
+
+        bool valA = getElementAsBool(a, idxA);
+        bool valB = getElementAsBool(b, idxB);
+        dataC[flatIdx] = op(valA, valB) ? 1 : 0;
     }
 
     return result;
 }
 
-/**
- * Compute 2D gradient using central differences.
- * Like NumPy's slicing: dfdx[1:-1, 1:-1] = (f[1:-1, 2:] - f[1:-1, :-2]) / (2*h)
- * @param f Input 2D array (rows x cols)
- * @param h Step size (default 1.0)
- * @returns Object with dfdx and dfdy arrays
- */
-Napi::Value Gradient2D(const Napi::CallbackInfo& info) {
+Napi::Value LogicalAnd(const Napi::CallbackInfo& info) {
+    return LogicalBinaryOp(info, [](bool a, bool b) { return a && b; });
+}
+
+Napi::Value LogicalOr(const Napi::CallbackInfo& info) {
+    return LogicalBinaryOp(info, [](bool a, bool b) { return a || b; });
+}
+
+Napi::Value LogicalXor(const Napi::CallbackInfo& info) {
+    return LogicalBinaryOp(info, [](bool a, bool b) { return a != b; });
+}
+
+Napi::Value LogicalNot(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     if (info.Length() < 1) {
         Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
-        return env.Null();
+        return env.Undefined();
     }
 
-    NativeNDArray* f = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    const auto& shape = a->shape();
+    int64_t size = a->size();
 
-    if (f->ndim() != 2) {
-        Napi::TypeError::New(env, "Expected 2D array").ThrowAsJavaScriptException();
-        return env.Null();
+    Napi::Array jsShape = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
     }
 
-    double h = 1.0;
-    if (info.Length() >= 2 && !info[1].IsUndefined()) {
-        h = info[1].As<Napi::Number>().DoubleValue();
-    }
-
-    int64_t rows = f->shape()[0];
-    int64_t cols = f->shape()[1];
-    const double* fData = static_cast<const double*>(f->data());
-    double inv2h = 1.0 / (2.0 * h);
-
-    // Create result arrays (same shape as input)
-    Napi::Array shape = Napi::Array::New(env, 2);
-    shape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
-    shape.Set(uint32_t(1), Napi::Number::New(env, static_cast<double>(cols)));
-
-    Napi::Object dfdxResult = NativeNDArray::constructor.New({
-        shape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsShape,
+        Napi::String::New(env, "bool"),
+        Napi::Boolean::New(env, true)
     });
-    Napi::Object dfdyResult = NativeNDArray::constructor.New({
-        shape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
-    });
+    NativeNDArray* c = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    uint8_t* dataC = static_cast<uint8_t*>(c->data());
 
-    NativeNDArray* dfdxArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(dfdxResult);
-    NativeNDArray* dfdyArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(dfdyResult);
-    double* dfdx = static_cast<double*>(dfdxArr->data());
-    double* dfdy = static_cast<double*>(dfdyArr->data());
-
-    // Initialize to zero (boundaries stay zero)
-    std::memset(dfdx, 0, rows * cols * sizeof(double));
-    std::memset(dfdy, 0, rows * cols * sizeof(double));
-
-    // Central differences for interior points with loop unrolling
-    for (int64_t i = 1; i < rows - 1; i++) {
-        int64_t j = 1;
-        // Unroll by 4
-        for (; j + 4 < cols - 1; j += 4) {
-            int64_t idx = i * cols + j;
-            // dfdx = (f[i, j+1] - f[i, j-1]) / (2*h)
-            dfdx[idx] = (fData[idx + 1] - fData[idx - 1]) * inv2h;
-            dfdx[idx+1] = (fData[idx + 2] - fData[idx]) * inv2h;
-            dfdx[idx+2] = (fData[idx + 3] - fData[idx + 1]) * inv2h;
-            dfdx[idx+3] = (fData[idx + 4] - fData[idx + 2]) * inv2h;
-            // dfdy = (f[i+1, j] - f[i-1, j]) / (2*h)
-            dfdy[idx] = (fData[(i+1) * cols + j] - fData[(i-1) * cols + j]) * inv2h;
-            dfdy[idx+1] = (fData[(i+1) * cols + j + 1] - fData[(i-1) * cols + j + 1]) * inv2h;
-            dfdy[idx+2] = (fData[(i+1) * cols + j + 2] - fData[(i-1) * cols + j + 2]) * inv2h;
-            dfdy[idx+3] = (fData[(i+1) * cols + j + 3] - fData[(i-1) * cols + j + 3]) * inv2h;
-        }
-        // Remainder
-        for (; j < cols - 1; j++) {
-            int64_t idx = i * cols + j;
-            dfdx[idx] = (fData[idx + 1] - fData[idx - 1]) * inv2h;
-            dfdy[idx] = (fData[(i+1) * cols + j] - fData[(i-1) * cols + j]) * inv2h;
-        }
+    for (int64_t i = 0; i < size; i++) {
+        bool val = getElementAsBool(a, i);
+        dataC[i] = val ? 0 : 1;
     }
 
-    // Return object with both gradients
-    Napi::Object result = Napi::Object::New(env);
-    result.Set("dfdx", dfdxResult);
-    result.Set("dfdy", dfdyResult);
     return result;
+}
+
+// ============================================================
+// Boolean Reductions (any, all)
+// ============================================================
+
+Napi::Value Any(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    const auto& shape = a->shape();
+    int64_t size = a->size();
+
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+        int ndim = static_cast<int>(shape.size());
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Fast path for 2D arrays
+        if (ndim == 2) {
+            int64_t rows = shape[0];
+            int64_t cols = shape[1];
+
+            if (axis == 0) {
+                // any along rows -> result shape [cols]
+                Napi::Array jsResultShape = Napi::Array::New(env, 1);
+                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(cols)));
+
+                Napi::Object result = NativeNDArray::constructor.New({
+                    jsResultShape,
+                    Napi::String::New(env, "bool"),
+                    Napi::Boolean::New(env, true)
+                });
+                NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+                uint8_t* resultData = static_cast<uint8_t*>(resultArr->data());
+
+                for (int64_t col = 0; col < cols; col++) {
+                    bool found = false;
+                    for (int64_t row = 0; row < rows && !found; row++) {
+                        if (getElementAsBool(a, row * cols + col)) {
+                            found = true;
+                        }
+                    }
+                    resultData[col] = found ? 1 : 0;
+                }
+                return result;
+
+            } else { // axis == 1
+                // any along columns -> result shape [rows]
+                Napi::Array jsResultShape = Napi::Array::New(env, 1);
+                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+
+                Napi::Object result = NativeNDArray::constructor.New({
+                    jsResultShape,
+                    Napi::String::New(env, "bool"),
+                    Napi::Boolean::New(env, true)
+                });
+                NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+                uint8_t* resultData = static_cast<uint8_t*>(resultArr->data());
+
+                for (int64_t row = 0; row < rows; row++) {
+                    bool found = false;
+                    for (int64_t col = 0; col < cols && !found; col++) {
+                        if (getElementAsBool(a, row * cols + col)) {
+                            found = true;
+                        }
+                    }
+                    resultData[row] = found ? 1 : 0;
+                }
+                return result;
+            }
+        }
+
+        Napi::Error::New(env, "Axis reduction only supported for 2D arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Global any - return boolean
+    for (int64_t i = 0; i < size; i++) {
+        if (getElementAsBool(a, i)) {
+            return Napi::Boolean::New(env, true);
+        }
+    }
+    return Napi::Boolean::New(env, false);
+}
+
+Napi::Value All(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    const auto& shape = a->shape();
+    int64_t size = a->size();
+
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+        int ndim = static_cast<int>(shape.size());
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Fast path for 2D arrays
+        if (ndim == 2) {
+            int64_t rows = shape[0];
+            int64_t cols = shape[1];
+
+            if (axis == 0) {
+                // all along rows -> result shape [cols]
+                Napi::Array jsResultShape = Napi::Array::New(env, 1);
+                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(cols)));
+
+                Napi::Object result = NativeNDArray::constructor.New({
+                    jsResultShape,
+                    Napi::String::New(env, "bool"),
+                    Napi::Boolean::New(env, true)
+                });
+                NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+                uint8_t* resultData = static_cast<uint8_t*>(resultArr->data());
+
+                for (int64_t col = 0; col < cols; col++) {
+                    bool allTrue = true;
+                    for (int64_t row = 0; row < rows && allTrue; row++) {
+                        if (!getElementAsBool(a, row * cols + col)) {
+                            allTrue = false;
+                        }
+                    }
+                    resultData[col] = allTrue ? 1 : 0;
+                }
+                return result;
+
+            } else { // axis == 1
+                // all along columns -> result shape [rows]
+                Napi::Array jsResultShape = Napi::Array::New(env, 1);
+                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+
+                Napi::Object result = NativeNDArray::constructor.New({
+                    jsResultShape,
+                    Napi::String::New(env, "bool"),
+                    Napi::Boolean::New(env, true)
+                });
+                NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+                uint8_t* resultData = static_cast<uint8_t*>(resultArr->data());
+
+                for (int64_t row = 0; row < rows; row++) {
+                    bool allTrue = true;
+                    for (int64_t col = 0; col < cols && allTrue; col++) {
+                        if (!getElementAsBool(a, row * cols + col)) {
+                            allTrue = false;
+                        }
+                    }
+                    resultData[row] = allTrue ? 1 : 0;
+                }
+                return result;
+            }
+        }
+
+        Napi::Error::New(env, "Axis reduction only supported for 2D arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Global all - return boolean
+    for (int64_t i = 0; i < size; i++) {
+        if (!getElementAsBool(a, i)) {
+            return Napi::Boolean::New(env, false);
+        }
+    }
+    return Napi::Boolean::New(env, true);
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -3519,23 +2950,28 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     math.Set("median", Napi::Function::New(env, Median));
     math.Set("zscore", Napi::Function::New(env, Zscore));
     math.Set("corrcoef", Napi::Function::New(env, Corrcoef));
-    math.Set("gram_matrix", Napi::Function::New(env, GramMatrix));
-    math.Set("softmax", Napi::Function::New(env, Softmax));
-    math.Set("pdist_sq", Napi::Function::New(env, PdistSq));
-    math.Set("affine", Napi::Function::New(env, Affine));
-    math.Set("row_divide", Napi::Function::New(env, RowDivide));
-    math.Set("xtx", Napi::Function::New(env, Xtx));
-    math.Set("xty", Napi::Function::New(env, Xty));
     math.Set("percentile", Napi::Function::New(env, Percentile));
-    math.Set("minmax_scale", Napi::Function::New(env, MinMaxScale));
     math.Set("kron", Napi::Function::New(env, Kron));
     math.Set("outer", Napi::Function::New(env, Outer));
-    math.Set("matrix_exp", Napi::Function::New(env, MatrixExp));
     math.Set("axpby", Napi::Function::New(env, Axpby));
-    math.Set("matvec", Napi::Function::New(env, Matvec));
-    math.Set("norm_sq", Napi::Function::New(env, NormSq));
-    math.Set("jacobi_step", Napi::Function::New(env, JacobiStep));
-    math.Set("gradient_2d", Napi::Function::New(env, Gradient2D));
+
+    // Comparison operators
+    math.Set("equal", Napi::Function::New(env, Equal));
+    math.Set("not_equal", Napi::Function::New(env, NotEqual));
+    math.Set("less", Napi::Function::New(env, Less));
+    math.Set("less_equal", Napi::Function::New(env, LessEqual));
+    math.Set("greater", Napi::Function::New(env, Greater));
+    math.Set("greater_equal", Napi::Function::New(env, GreaterEqual));
+
+    // Logical operators
+    math.Set("logical_and", Napi::Function::New(env, LogicalAnd));
+    math.Set("logical_or", Napi::Function::New(env, LogicalOr));
+    math.Set("logical_xor", Napi::Function::New(env, LogicalXor));
+    math.Set("logical_not", Napi::Function::New(env, LogicalNot));
+
+    // Boolean reductions
+    math.Set("any", Napi::Function::New(env, Any));
+    math.Set("all", Napi::Function::New(env, All));
 
     exports.Set("math", math);
     return exports;

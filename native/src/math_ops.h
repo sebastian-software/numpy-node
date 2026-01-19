@@ -37,6 +37,24 @@ Napi::Value Min(const Napi::CallbackInfo& info);
 Napi::Value Mean(const Napi::CallbackInfo& info);
 Napi::Value Std(const Napi::CallbackInfo& info);
 
+// Comparison operators
+Napi::Value Equal(const Napi::CallbackInfo& info);
+Napi::Value NotEqual(const Napi::CallbackInfo& info);
+Napi::Value Less(const Napi::CallbackInfo& info);
+Napi::Value LessEqual(const Napi::CallbackInfo& info);
+Napi::Value Greater(const Napi::CallbackInfo& info);
+Napi::Value GreaterEqual(const Napi::CallbackInfo& info);
+
+// Logical operators
+Napi::Value LogicalAnd(const Napi::CallbackInfo& info);
+Napi::Value LogicalOr(const Napi::CallbackInfo& info);
+Napi::Value LogicalXor(const Napi::CallbackInfo& info);
+Napi::Value LogicalNot(const Napi::CallbackInfo& info);
+
+// Boolean reductions
+Napi::Value Any(const Napi::CallbackInfo& info);
+Napi::Value All(const Napi::CallbackInfo& info);
+
 /**
  * Initialize math module
  */

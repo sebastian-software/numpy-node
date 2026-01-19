@@ -149,28 +149,25 @@ export interface MathModule {
   abs(a: NativeNDArray): NativeNDArray;
   zscore(a: NativeNDArray, axis?: number): NativeNDArray;
   corrcoef(a: NativeNDArray): NativeNDArray;
-  gram_matrix(a: NativeNDArray): NativeNDArray;
-  softmax(a: NativeNDArray): NativeNDArray;
-  pdist_sq(a: NativeNDArray): NativeNDArray;
-  affine(x: NativeNDArray, gamma: NativeNDArray, beta: NativeNDArray): NativeNDArray;
-  row_divide(x: NativeNDArray, scales: NativeNDArray): NativeNDArray;
-  xtx(x: NativeNDArray): NativeNDArray;
-  xty(x: NativeNDArray, y: NativeNDArray): NativeNDArray;
   percentile(a: NativeNDArray, q: number[], axis?: number): NativeNDArray;
-  minmax_scale(a: NativeNDArray, axis?: number): NativeNDArray;
   kron(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
   outer(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
-  matrix_exp(a: NativeNDArray, numTerms?: number): NativeNDArray;
   axpby(alpha: number, x: NativeNDArray, beta?: number, y?: NativeNDArray): NativeNDArray;
-  matvec(A: NativeNDArray, x: NativeNDArray): NativeNDArray;
-  norm_sq(x: NativeNDArray, axis?: number): NativeNDArray | number;
-  jacobi_step(
-    R: NativeNDArray,
-    x: NativeNDArray,
-    b: NativeNDArray,
-    D: NativeNDArray
-  ): NativeNDArray;
-  gradient_2d(f: NativeNDArray, h?: number): { dfdx: NativeNDArray; dfdy: NativeNDArray };
+  // Comparison operators
+  equal(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  not_equal(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  less(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  less_equal(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  greater(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  greater_equal(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  // Logical operators
+  logical_and(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
+  logical_or(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
+  logical_xor(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
+  logical_not(a: NativeNDArray): NativeNDArray;
+  // Boolean reductions
+  any(a: NativeNDArray, axis?: number): NativeNDArray | boolean;
+  all(a: NativeNDArray, axis?: number): NativeNDArray | boolean;
 }
 
 /**

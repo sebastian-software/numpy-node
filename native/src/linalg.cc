@@ -528,10 +528,46 @@ Napi::Value Solve(const Napi::CallbackInfo& info) {
     int nrhs = b->ndim() == 1 ? 1 : static_cast<int>(b->shape()[1]);
 
 #if defined(USE_ACCELERATE) || defined(USE_OPENBLAS)
-    // Make copies since dgesv modifies inputs
+    // Convert A from row-major to column-major for LAPACK
+    // dgesv expects column-major storage
     std::vector<double> aCopy(n * n);
-    std::memcpy(aCopy.data(), a->data(), n * n * sizeof(double));
+    double* aData = static_cast<double*>(a->data());
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            // row-major: A[i,j] = aData[i*n + j]
+            // col-major: aCopy[j*n + i]
+            aCopy[j * n + i] = aData[i * n + j];
+        }
+    }
 
+    // Copy b to solution vector (dgesv overwrites b with solution)
+    // For 1D b: just copy directly (vector, no layout change needed)
+    // For 2D b: convert from row-major to column-major
+    std::vector<double> bCopy(n * nrhs);
+    double* bData = static_cast<double*>(b->data());
+    if (b->ndim() == 1) {
+        std::memcpy(bCopy.data(), bData, n * sizeof(double));
+    } else {
+        // b is 2D (n x nrhs), convert to column-major
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < nrhs; j++) {
+                bCopy[j * n + i] = bData[i * nrhs + j];
+            }
+        }
+    }
+
+    std::vector<int> ipiv(n);
+    int lapackInfo = 0;
+
+    dgesv_(&n, &nrhs, aCopy.data(), &n, ipiv.data(),
+           bCopy.data(), &n, &lapackInfo);
+
+    if (lapackInfo != 0) {
+        Napi::Error::New(env, "Linear solve failed").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create result array and copy solution
     Napi::Array shape;
     if (b->ndim() == 1) {
         shape = Napi::Array::New(env, 1);
@@ -544,17 +580,18 @@ Napi::Value Solve(const Napi::CallbackInfo& info) {
 
     Napi::Object result = NativeNDArray::constructor.New({shape, Napi::String::New(env, "float64")});
     NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
-    std::memcpy(x->data(), b->data(), x->size() * sizeof(double));
+    double* xData = static_cast<double*>(x->data());
 
-    std::vector<int> ipiv(n);
-    int lapackInfo = 0;
-
-    dgesv_(&n, &nrhs, aCopy.data(), &n, ipiv.data(),
-           static_cast<double*>(x->data()), &n, &lapackInfo);
-
-    if (lapackInfo != 0) {
-        Napi::Error::New(env, "Linear solve failed").ThrowAsJavaScriptException();
-        return env.Undefined();
+    if (b->ndim() == 1) {
+        // 1D result: copy directly
+        std::memcpy(xData, bCopy.data(), n * sizeof(double));
+    } else {
+        // 2D result: convert from column-major back to row-major
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < nrhs; j++) {
+                xData[i * nrhs + j] = bCopy[j * n + i];
+            }
+        }
     }
 
     return result;

@@ -26,6 +26,25 @@
 - **Zero Config** - Prebuilt binaries for all major platforms, no compiler needed
 - **Lightweight** - Only installs the binary for your platform (~280KB)
 
+## NumPy Compatibility Guarantee
+
+**All numpy-node functions are verified to be 1:1 compatible with NumPy.**
+
+This means:
+
+- Same function behavior and output values
+- Same broadcasting semantics
+- Same edge case handling
+- Same default parameter values
+
+Every function includes tests verified against actual NumPy output. See [ADR-0005](docs/adr/0005-numpy-compatibility-policy.md) for our compatibility policy.
+
+```typescript
+// NumPy: np.greater(np.array([1, 2, 3, 4, 5]), 3) → [False, False, False, True, True]
+// numpy-node: identical behavior
+const mask = greater(array([1, 2, 3, 4, 5]), 3); // [0, 0, 0, 1, 1] (bool array)
+```
+
 ## Installation
 
 ```bash
@@ -125,6 +144,18 @@ const med = median(a);
 | `exp`, `log`, `sin`, `cos`, `tan`       | Transcendental functions |
 | `sum`, `prod`, `min`, `max`             | Reductions               |
 | `mean`, `std`, `variance`, `median`     | Statistics               |
+| `percentile`, `corrcoef`                | Advanced statistics      |
+| `outer`, `kron`                         | Tensor products          |
+
+### Comparison & Logical
+
+| Function                                         | Description              |
+| ------------------------------------------------ | ------------------------ |
+| `equal`, `not_equal`                             | Element-wise equality    |
+| `less`, `less_equal`, `greater`, `greater_equal` | Element-wise comparison  |
+| `logical_and`, `logical_or`, `logical_xor`       | Element-wise logical ops |
+| `logical_not`                                    | Element-wise negation    |
+| `any`, `all`                                     | Boolean reductions       |
 
 ### Linear Algebra
 

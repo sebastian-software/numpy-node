@@ -385,7 +385,7 @@ Napi::Value NativeNDArray::Copy(const Napi::CallbackInfo& info) {
         size_t elemSize = dtype_size(dtype_);
 
         const char* src = static_cast<const char*>(data());
-        double* dst = static_cast<double*>(copy->data());
+        char* dst = static_cast<char*>(copy->data());
 
         // Iterate over all elements
         std::vector<int64_t> indices(ndim, 0);
@@ -396,8 +396,8 @@ Napi::Value NativeNDArray::Copy(const Napi::CallbackInfo& info) {
                 srcOffset += indices[d] * strides_[d];
             }
 
-            // Copy element
-            dst[i] = *reinterpret_cast<const double*>(src + srcOffset);
+            // Copy element (destination is contiguous, so use elemSize * i)
+            std::memcpy(dst + i * elemSize, src + srcOffset, elemSize);
 
             // Increment indices (like a multi-digit counter)
             for (int d = ndim - 1; d >= 0; d--) {
@@ -549,6 +549,14 @@ void NativeNDArray::SetValue(const Napi::CallbackInfo& info) {
             *static_cast<int64_t*>(elemPtr) = static_cast<int64_t>(value);
             break;
         }
+        case DType::Bool: {
+            *static_cast<uint8_t*>(elemPtr) = (value != 0.0) ? 1 : 0;
+            break;
+        }
+        case DType::Uint8: {
+            *static_cast<uint8_t*>(elemPtr) = static_cast<uint8_t>(value);
+            break;
+        }
         default: {
             *static_cast<double*>(elemPtr) = value;
             break;
@@ -593,6 +601,30 @@ Napi::Value NativeNDArray::Fill(const Napi::CallbackInfo& info) {
                 }
                 break;
             }
+            case DType::Int64: {
+                int64_t* ptr = static_cast<int64_t*>(data());
+                int64_t ival = static_cast<int64_t>(value);
+                for (int64_t i = 0; i < totalSize; i++) {
+                    ptr[i] = ival;
+                }
+                break;
+            }
+            case DType::Bool: {
+                uint8_t* ptr = static_cast<uint8_t*>(data());
+                uint8_t bval = (value != 0.0) ? 1 : 0;
+                for (int64_t i = 0; i < totalSize; i++) {
+                    ptr[i] = bval;
+                }
+                break;
+            }
+            case DType::Uint8: {
+                uint8_t* ptr = static_cast<uint8_t*>(data());
+                uint8_t uval = static_cast<uint8_t>(value);
+                for (int64_t i = 0; i < totalSize; i++) {
+                    ptr[i] = uval;
+                }
+                break;
+            }
             default: {
                 double* ptr = static_cast<double*>(data());
                 for (int64_t i = 0; i < totalSize; i++) {
@@ -614,8 +646,30 @@ Napi::Value NativeNDArray::Fill(const Napi::CallbackInfo& info) {
                 byteOffset += indices[d] * strides_[d];
             }
 
-            // Set value
-            *reinterpret_cast<double*>(basePtr + byteOffset) = value;
+            // Set value based on dtype
+            switch (dtype_) {
+                case DType::Float64:
+                    *reinterpret_cast<double*>(basePtr + byteOffset) = value;
+                    break;
+                case DType::Float32:
+                    *reinterpret_cast<float*>(basePtr + byteOffset) = static_cast<float>(value);
+                    break;
+                case DType::Int32:
+                    *reinterpret_cast<int32_t*>(basePtr + byteOffset) = static_cast<int32_t>(value);
+                    break;
+                case DType::Int64:
+                    *reinterpret_cast<int64_t*>(basePtr + byteOffset) = static_cast<int64_t>(value);
+                    break;
+                case DType::Bool:
+                    *reinterpret_cast<uint8_t*>(basePtr + byteOffset) = (value != 0.0) ? 1 : 0;
+                    break;
+                case DType::Uint8:
+                    *reinterpret_cast<uint8_t*>(basePtr + byteOffset) = static_cast<uint8_t>(value);
+                    break;
+                default:
+                    *reinterpret_cast<double*>(basePtr + byteOffset) = value;
+                    break;
+            }
 
             // Increment indices
             for (int d = ndim - 1; d >= 0; d--) {

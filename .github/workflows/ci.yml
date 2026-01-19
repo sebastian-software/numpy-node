@@ -162,3 +162,51 @@ jobs:
           files: ./coverage/lcov.info
           fail_ci_if_error: false
           verbose: true
+
+  numpy-conformity:
+    name: NumPy Conformity Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install NumPy
+        run: pip install numpy
+
+      - name: Generate NumPy reference values
+        run: python3 scripts/generate_numpy_reference.py
+
+      - name: Show NumPy version
+        run: python3 -c "import numpy; print('NumPy version:', numpy.__version__)"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenblas-dev liblapack-dev
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build native module
+        run: pnpm build:native
+
+      - name: Build TypeScript
+        run: pnpm build
+
+      - name: Run NumPy conformity tests
+        run: pnpm test -- tests/numpy-conformity.test.ts

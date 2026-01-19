@@ -260,65 +260,6 @@ export function corrcoef(a: NDArray): NDArray {
 }
 
 /**
- * Gram matrix: X @ X.T
- * Uses dsyrk for efficient symmetric matrix computation.
- */
-export function gram_matrix(a: NDArray): NDArray {
-  return new NDArray(math.gram_matrix(a._native));
-}
-
-/**
- * Softmax function: exp(x) / sum(exp(x))
- * Computed in a single native call with numerical stability.
- */
-export function softmax(a: NDArray): NDArray {
-  return new NDArray(math.softmax(a._native));
-}
-
-/**
- * Pairwise squared Euclidean distances.
- * Computes D_ij = ||x_i - x_j||^2 for all pairs of points.
- */
-export function pdist_sq(a: NDArray): NDArray {
-  return new NDArray(math.pdist_sq(a._native));
-}
-
-/**
- * Affine transform: gamma * x + beta
- * Fused multiply-add with row broadcasting.
- * Common in layer normalization and batch normalization.
- */
-export function affine(x: NDArray, gamma: NDArray, beta: NDArray): NDArray {
-  return new NDArray(math.affine(x._native, gamma._native, beta._native));
-}
-
-/**
- * Row-wise division: result[i,j] = x[i,j] / scales[i]
- * Useful for normalizing vectors (e.g., dividing each row by its norm).
- * @param x Input 2D array [m, n]
- * @param scales 1D array of scale values [m]
- */
-export function row_divide(x: NDArray, scales: NDArray): NDArray {
-  return new NDArray(math.row_divide(x._native, scales._native));
-}
-
-/**
- * Compute X.T @ X without explicit transpose.
- * Uses BLAS dsyrk for efficient symmetric matrix computation.
- */
-export function xtx(x: NDArray): NDArray {
-  return new NDArray(math.xtx(x._native));
-}
-
-/**
- * Compute X.T @ y without explicit transpose.
- * Uses BLAS dgemv with transpose flag.
- */
-export function xty(x: NDArray, y: NDArray): NDArray {
-  return new NDArray(math.xty(x._native, y._native));
-}
-
-/**
  * Compute percentiles using quickselect algorithm - O(n) per percentile.
  * @param a Input array
  * @param q Array of percentile values (0-100)
@@ -326,16 +267,6 @@ export function xty(x: NDArray, y: NDArray): NDArray {
  */
 export function percentile(a: NDArray, q: number[], axis?: number): NDArray {
   return new NDArray(math.percentile(a._native, q, axis));
-}
-
-/**
- * Min-max scaling: (X - min) / (max - min)
- * Fused operation that computes min, max, and scales in a single native call.
- * @param a Input 2D array
- * @param axis Axis along which to scale (0=columns, 1=rows, default=0)
- */
-export function minmax_scale(a: NDArray, axis?: number): NDArray {
-  return new NDArray(math.minmax_scale(a._native, axis));
 }
 
 /**
@@ -357,16 +288,6 @@ export function outer(a: NDArray, b: NDArray): NDArray {
 }
 
 /**
- * Matrix exponential using Taylor series: exp(A) = I + A + A²/2! + A³/3! + ...
- * Fused native implementation with BLAS acceleration.
- * @param a Input square matrix
- * @param numTerms Number of Taylor series terms (default 10)
- */
-export function matrix_exp(a: NDArray, numTerms?: number): NDArray {
-  return new NDArray(math.matrix_exp(a._native, numTerms));
-}
-
-/**
  * BLAS-style axpby: result = alpha*x + beta*y
  * Fuses scalar multiply and addition into one operation.
  * If beta and y are not provided, computes alpha*x (scalar multiply).
@@ -378,50 +299,122 @@ export function axpby(alpha: number, x: NDArray, beta?: number, y?: NDArray): ND
   return new NDArray(math.axpby(alpha, x._native));
 }
 
+// ============================================================
+// Comparison Operators (return boolean arrays)
+// ============================================================
+
 /**
- * Matrix-vector multiply: y = A @ x
- * Uses BLAS dgemv for optimal performance.
+ * Element-wise equality comparison
+ * Returns a boolean array where each element is true if a[i] == b[i]
  */
-export function matvec(A: NDArray, x: NDArray): NDArray {
-  return new NDArray(math.matvec(A._native, x._native));
+export function equal(a: NDArray, b: NDArray | number): NDArray {
+  return new NDArray(math.equal(a._native, b instanceof NDArray ? b._native : b));
 }
 
 /**
- * Compute squared L2 norms along an axis.
- * Fuses multiply and sum into one operation: sum(x^2, axis)
- * @param x Input array
- * @param axis Axis along which to compute (0=columns, 1=rows, default=1)
+ * Element-wise inequality comparison
+ * Returns a boolean array where each element is true if a[i] != b[i]
  */
-export function norm_sq(x: NDArray, axis?: number): NDArray | number {
-  const result = math.norm_sq(x._native, axis);
-  if (typeof result === 'number') {
+export function not_equal(a: NDArray, b: NDArray | number): NDArray {
+  return new NDArray(math.not_equal(a._native, b instanceof NDArray ? b._native : b));
+}
+
+/**
+ * Element-wise less-than comparison
+ * Returns a boolean array where each element is true if a[i] < b[i]
+ */
+export function less(a: NDArray, b: NDArray | number): NDArray {
+  return new NDArray(math.less(a._native, b instanceof NDArray ? b._native : b));
+}
+
+/**
+ * Element-wise less-than-or-equal comparison
+ * Returns a boolean array where each element is true if a[i] <= b[i]
+ */
+export function less_equal(a: NDArray, b: NDArray | number): NDArray {
+  return new NDArray(math.less_equal(a._native, b instanceof NDArray ? b._native : b));
+}
+
+/**
+ * Element-wise greater-than comparison
+ * Returns a boolean array where each element is true if a[i] > b[i]
+ */
+export function greater(a: NDArray, b: NDArray | number): NDArray {
+  return new NDArray(math.greater(a._native, b instanceof NDArray ? b._native : b));
+}
+
+/**
+ * Element-wise greater-than-or-equal comparison
+ * Returns a boolean array where each element is true if a[i] >= b[i]
+ */
+export function greater_equal(a: NDArray, b: NDArray | number): NDArray {
+  return new NDArray(math.greater_equal(a._native, b instanceof NDArray ? b._native : b));
+}
+
+// ============================================================
+// Logical Operators (return boolean arrays)
+// ============================================================
+
+/**
+ * Element-wise logical AND
+ * Returns a boolean array where each element is true if a[i] && b[i]
+ */
+export function logical_and(a: NDArray, b: NDArray): NDArray {
+  return new NDArray(math.logical_and(a._native, b._native));
+}
+
+/**
+ * Element-wise logical OR
+ * Returns a boolean array where each element is true if a[i] || b[i]
+ */
+export function logical_or(a: NDArray, b: NDArray): NDArray {
+  return new NDArray(math.logical_or(a._native, b._native));
+}
+
+/**
+ * Element-wise logical XOR
+ * Returns a boolean array where each element is true if a[i] != b[i] (as booleans)
+ */
+export function logical_xor(a: NDArray, b: NDArray): NDArray {
+  return new NDArray(math.logical_xor(a._native, b._native));
+}
+
+/**
+ * Element-wise logical NOT
+ * Returns a boolean array where each element is !a[i]
+ */
+export function logical_not(a: NDArray): NDArray {
+  return new NDArray(math.logical_not(a._native));
+}
+
+// ============================================================
+// Boolean Reductions
+// ============================================================
+
+/**
+ * Test whether any element is truthy
+ * @param a Input array
+ * @param axis Axis along which to reduce (optional)
+ * @returns true if any element is truthy, or an NDArray if axis is specified
+ */
+export function any(a: NDArray, axis?: number): NDArray | boolean {
+  const result = math.any(a._native, axis);
+  if (typeof result === 'boolean') {
     return result;
   }
   return new NDArray(result);
 }
 
 /**
- * Fused Jacobi iteration step: x_new = (b - R @ x) / D
- * Combines matvec, subtract, and element-wise divide in one native call.
- * @param R Matrix (n x n) - the off-diagonal part of A
- * @param x Current solution vector (n)
- * @param b Right-hand side vector (n)
- * @param D Diagonal elements of A (n)
+ * Test whether all elements are truthy
+ * @param a Input array
+ * @param axis Axis along which to reduce (optional)
+ * @returns true if all elements are truthy, or an NDArray if axis is specified
  */
-export function jacobi_step(R: NDArray, x: NDArray, b: NDArray, D: NDArray): NDArray {
-  return new NDArray(math.jacobi_step(R._native, x._native, b._native, D._native));
-}
-
-/**
- * Compute 2D gradients using central differences: df/dx and df/dy
- * Native implementation with loop unrolling for performance.
- * @param f Input 2D array
- * @param h Grid spacing (default 1.0)
- */
-export function gradient_2d(f: NDArray, h?: number): { dfdx: NDArray; dfdy: NDArray } {
-  const result = math.gradient_2d(f._native, h);
-  return {
-    dfdx: new NDArray(result.dfdx),
-    dfdy: new NDArray(result.dfdy),
-  };
+export function all(a: NDArray, axis?: number): NDArray | boolean {
+  const result = math.all(a._native, axis);
+  if (typeof result === 'boolean') {
+    return result;
+  }
+  return new NDArray(result);
 }
