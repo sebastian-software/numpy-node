@@ -97,6 +97,12 @@ Napi::Value LogicalNot(const Napi::CallbackInfo& info);
 Napi::Value Any(const Napi::CallbackInfo& info);
 Napi::Value All(const Napi::CallbackInfo& info);
 
+// Fused operations (reduce N-API overhead)
+Napi::Value Normalize(const Napi::CallbackInfo& info);  // (x - mean) / std
+Napi::Value Affine(const Napi::CallbackInfo& info);     // x * scale + bias
+Napi::Value MulAdd(const Napi::CallbackInfo& info);     // a * b + c
+Napi::Value Softmax(const Napi::CallbackInfo& info);    // numerically stable softmax
+
 /**
  * Initialize math module
  */

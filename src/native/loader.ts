@@ -200,6 +200,19 @@ export interface MathModule {
   // Boolean reductions
   any(a: NativeNDArray, axis?: number): NativeNDArray | boolean;
   all(a: NativeNDArray, axis?: number): NativeNDArray | boolean;
+  // Fused operations (reduce N-API overhead)
+  normalize(
+    x: NativeNDArray,
+    mean: NativeNDArray | number,
+    std: NativeNDArray | number
+  ): NativeNDArray;
+  affine(
+    x: NativeNDArray,
+    scale: NativeNDArray | number,
+    bias: NativeNDArray | number
+  ): NativeNDArray;
+  muladd(a: NativeNDArray, b: NativeNDArray | number, c: NativeNDArray | number): NativeNDArray;
+  softmax(x: NativeNDArray, axis?: number): NativeNDArray;
 }
 
 /**

@@ -113,6 +113,11 @@ export {
   allclose,
   // Einstein summation
   einsum,
+  // Fused operations (reduce N-API overhead)
+  normalize,
+  affine,
+  muladd,
+  softmax,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)

@@ -5020,6 +5020,450 @@ Napi::Value Allclose(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(env, true);
 }
 
+// ============================================================
+// Fused Operations - Reduce N-API overhead by combining multiple ops
+// ============================================================
+
+/**
+ * Normalize: (x - mean) / std
+ * Fused operation for batch normalization and z-score computation.
+ * Supports broadcasting: mean and std can be scalars or arrays.
+ */
+Napi::Value Normalize(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 3) {
+        Napi::TypeError::New(env, "Expected (x, mean, std)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* dataX = static_cast<double*>(x->data());
+    const auto& shape = x->shape();
+    int64_t size = x->size();
+
+    // Create result array
+    Napi::Array jsShape = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataR = static_cast<double*>(resultArr->data());
+
+    bool meanIsScalar = info[1].IsNumber();
+    bool stdIsScalar = info[2].IsNumber();
+
+    if (meanIsScalar && stdIsScalar) {
+        // Fast path: both scalars
+        double meanVal = info[1].As<Napi::Number>().DoubleValue();
+        double stdVal = info[2].As<Napi::Number>().DoubleValue();
+
+#if defined(USE_ACCELERATE)
+        // result = (x - mean) / std = x/std - mean/std
+        double invStd = 1.0 / stdVal;
+        double offset = -meanVal * invStd;
+        vDSP_vsmsaD(dataX, 1, &invStd, &offset, dataR, 1, size);
+#else
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = (dataX[i] - meanVal) / stdVal;
+        }
+#endif
+    } else if (!meanIsScalar && stdIsScalar) {
+        // mean is array, std is scalar (common for per-feature normalization)
+        NativeNDArray* meanArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+        double* dataMean = static_cast<double*>(meanArr->data());
+        double stdVal = info[2].As<Napi::Number>().DoubleValue();
+        int64_t meanSize = meanArr->size();
+
+        // Assume broadcasting along last dimension
+        if (shape.size() == 2 && meanSize == shape[1]) {
+            int64_t rows = shape[0];
+            int64_t cols = shape[1];
+            for (int64_t r = 0; r < rows; r++) {
+                for (int64_t c = 0; c < cols; c++) {
+                    dataR[r * cols + c] = (dataX[r * cols + c] - dataMean[c]) / stdVal;
+                }
+            }
+        } else {
+            // Fallback: element-wise with cycling
+            for (int64_t i = 0; i < size; i++) {
+                dataR[i] = (dataX[i] - dataMean[i % meanSize]) / stdVal;
+            }
+        }
+    } else if (!meanIsScalar && !stdIsScalar) {
+        // Both arrays (full per-element normalization)
+        NativeNDArray* meanArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+        NativeNDArray* stdArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[2].As<Napi::Object>());
+        double* dataMean = static_cast<double*>(meanArr->data());
+        double* dataStd = static_cast<double*>(stdArr->data());
+        int64_t meanSize = meanArr->size();
+        int64_t stdSize = stdArr->size();
+
+        // Assume broadcasting along last dimension for 2D
+        if (shape.size() == 2 && meanSize == shape[1] && stdSize == shape[1]) {
+            int64_t rows = shape[0];
+            int64_t cols = shape[1];
+            for (int64_t r = 0; r < rows; r++) {
+                for (int64_t c = 0; c < cols; c++) {
+                    dataR[r * cols + c] = (dataX[r * cols + c] - dataMean[c]) / dataStd[c];
+                }
+            }
+        } else {
+            for (int64_t i = 0; i < size; i++) {
+                dataR[i] = (dataX[i] - dataMean[i % meanSize]) / dataStd[i % stdSize];
+            }
+        }
+    } else {
+        // mean is scalar, std is array (rare case)
+        double meanVal = info[1].As<Napi::Number>().DoubleValue();
+        NativeNDArray* stdArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[2].As<Napi::Object>());
+        double* dataStd = static_cast<double*>(stdArr->data());
+        int64_t stdSize = stdArr->size();
+
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = (dataX[i] - meanVal) / dataStd[i % stdSize];
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Affine: x * scale + bias
+ * Fused operation for affine transformation (common in neural networks).
+ * Supports broadcasting: scale and bias can be scalars or arrays.
+ */
+Napi::Value Affine(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 3) {
+        Napi::TypeError::New(env, "Expected (x, scale, bias)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* dataX = static_cast<double*>(x->data());
+    const auto& shape = x->shape();
+    int64_t size = x->size();
+
+    // Create result array
+    Napi::Array jsShape = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataR = static_cast<double*>(resultArr->data());
+
+    bool scaleIsScalar = info[1].IsNumber();
+    bool biasIsScalar = info[2].IsNumber();
+
+    if (scaleIsScalar && biasIsScalar) {
+        // Fast path: both scalars
+        double scale = info[1].As<Napi::Number>().DoubleValue();
+        double bias = info[2].As<Napi::Number>().DoubleValue();
+
+#if defined(USE_ACCELERATE)
+        vDSP_vsmsaD(dataX, 1, &scale, &bias, dataR, 1, size);
+#else
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = dataX[i] * scale + bias;
+        }
+#endif
+    } else if (!scaleIsScalar && !biasIsScalar) {
+        // Both arrays (per-feature scale and bias)
+        NativeNDArray* scaleArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+        NativeNDArray* biasArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[2].As<Napi::Object>());
+        double* dataScale = static_cast<double*>(scaleArr->data());
+        double* dataBias = static_cast<double*>(biasArr->data());
+        int64_t scaleSize = scaleArr->size();
+
+        // Assume broadcasting along last dimension for 2D
+        if (shape.size() == 2 && scaleSize == shape[1]) {
+            int64_t rows = shape[0];
+            int64_t cols = shape[1];
+            for (int64_t r = 0; r < rows; r++) {
+                for (int64_t c = 0; c < cols; c++) {
+                    dataR[r * cols + c] = dataX[r * cols + c] * dataScale[c] + dataBias[c];
+                }
+            }
+        } else {
+            for (int64_t i = 0; i < size; i++) {
+                dataR[i] = dataX[i] * dataScale[i % scaleSize] + dataBias[i % scaleSize];
+            }
+        }
+    } else if (scaleIsScalar) {
+        // scale is scalar, bias is array
+        double scale = info[1].As<Napi::Number>().DoubleValue();
+        NativeNDArray* biasArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[2].As<Napi::Object>());
+        double* dataBias = static_cast<double*>(biasArr->data());
+        int64_t biasSize = biasArr->size();
+
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = dataX[i] * scale + dataBias[i % biasSize];
+        }
+    } else {
+        // scale is array, bias is scalar
+        NativeNDArray* scaleArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+        double* dataScale = static_cast<double*>(scaleArr->data());
+        int64_t scaleSize = scaleArr->size();
+        double bias = info[2].As<Napi::Number>().DoubleValue();
+
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = dataX[i] * dataScale[i % scaleSize] + bias;
+        }
+    }
+
+    return result;
+}
+
+/**
+ * MulAdd: a * b + c (fused multiply-add)
+ * Used in gradient updates, optimizer steps, etc.
+ * All arguments can be arrays or scalars.
+ */
+Napi::Value MulAdd(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 3) {
+        Napi::TypeError::New(env, "Expected (a, b, c)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* dataA = static_cast<double*>(a->data());
+    const auto& shape = a->shape();
+    int64_t size = a->size();
+
+    // Create result array
+    Napi::Array jsShape = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataR = static_cast<double*>(resultArr->data());
+
+    bool bIsScalar = info[1].IsNumber();
+    bool cIsScalar = info[2].IsNumber();
+
+    if (bIsScalar && cIsScalar) {
+        // a * scalar + scalar
+        double b = info[1].As<Napi::Number>().DoubleValue();
+        double c = info[2].As<Napi::Number>().DoubleValue();
+#if defined(USE_ACCELERATE)
+        vDSP_vsmsaD(dataA, 1, &b, &c, dataR, 1, size);
+#else
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = dataA[i] * b + c;
+        }
+#endif
+    } else if (bIsScalar && !cIsScalar) {
+        // a * scalar + array
+        double b = info[1].As<Napi::Number>().DoubleValue();
+        NativeNDArray* cArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[2].As<Napi::Object>());
+        double* dataC = static_cast<double*>(cArr->data());
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = dataA[i] * b + dataC[i];
+        }
+    } else if (!bIsScalar && cIsScalar) {
+        // a * array + scalar
+        NativeNDArray* bArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+        double* dataB = static_cast<double*>(bArr->data());
+        double c = info[2].As<Napi::Number>().DoubleValue();
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = dataA[i] * dataB[i] + c;
+        }
+    } else {
+        // a * array + array
+        NativeNDArray* bArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+        NativeNDArray* cArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[2].As<Napi::Object>());
+        double* dataB = static_cast<double*>(bArr->data());
+        double* dataC = static_cast<double*>(cArr->data());
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = dataA[i] * dataB[i] + dataC[i];
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Softmax: exp(x - max(x)) / sum(exp(x - max(x)))
+ * Numerically stable softmax with optional axis parameter.
+ */
+Napi::Value Softmax(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* dataX = static_cast<double*>(x->data());
+    const auto& shape = x->shape();
+    int64_t size = x->size();
+
+    // Default axis is -1 (last axis)
+    int axis = -1;
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        axis = info[1].As<Napi::Number>().Int32Value();
+    }
+    int ndim = static_cast<int>(shape.size());
+    if (axis < 0) axis += ndim;
+
+    // Create result array
+    Napi::Array jsShape = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataR = static_cast<double*>(resultArr->data());
+
+    // Fast path for 1D
+    if (ndim == 1) {
+        double maxVal = dataX[0];
+        for (int64_t i = 1; i < size; i++) {
+            if (dataX[i] > maxVal) maxVal = dataX[i];
+        }
+        double sum = 0.0;
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] = std::exp(dataX[i] - maxVal);
+            sum += dataR[i];
+        }
+        for (int64_t i = 0; i < size; i++) {
+            dataR[i] /= sum;
+        }
+        return result;
+    }
+
+    // Fast path for 2D with axis=1 (rows)
+    if (ndim == 2 && axis == 1) {
+        int64_t rows = shape[0];
+        int64_t cols = shape[1];
+
+        for (int64_t r = 0; r < rows; r++) {
+            double* rowIn = dataX + r * cols;
+            double* rowOut = dataR + r * cols;
+
+            // Find max
+            double maxVal = rowIn[0];
+            for (int64_t c = 1; c < cols; c++) {
+                if (rowIn[c] > maxVal) maxVal = rowIn[c];
+            }
+
+            // Compute exp and sum
+            double sum = 0.0;
+            for (int64_t c = 0; c < cols; c++) {
+                rowOut[c] = std::exp(rowIn[c] - maxVal);
+                sum += rowOut[c];
+            }
+
+            // Normalize
+            for (int64_t c = 0; c < cols; c++) {
+                rowOut[c] /= sum;
+            }
+        }
+        return result;
+    }
+
+    // Fast path for 2D with axis=0 (columns)
+    if (ndim == 2 && axis == 0) {
+        int64_t rows = shape[0];
+        int64_t cols = shape[1];
+
+        for (int64_t c = 0; c < cols; c++) {
+            // Find max in column
+            double maxVal = dataX[c];
+            for (int64_t r = 1; r < rows; r++) {
+                if (dataX[r * cols + c] > maxVal) maxVal = dataX[r * cols + c];
+            }
+
+            // Compute exp and sum
+            double sum = 0.0;
+            for (int64_t r = 0; r < rows; r++) {
+                dataR[r * cols + c] = std::exp(dataX[r * cols + c] - maxVal);
+                sum += dataR[r * cols + c];
+            }
+
+            // Normalize
+            for (int64_t r = 0; r < rows; r++) {
+                dataR[r * cols + c] /= sum;
+            }
+        }
+        return result;
+    }
+
+    // Generic case: compute strides and iterate
+    std::vector<int64_t> strides(ndim);
+    strides[ndim - 1] = 1;
+    for (int i = ndim - 2; i >= 0; i--) {
+        strides[i] = strides[i + 1] * shape[i + 1];
+    }
+
+    int64_t axisSize = shape[axis];
+    int64_t outerSize = size / axisSize;
+
+    // Compute outer iteration (all indices except axis)
+    for (int64_t outer = 0; outer < outerSize; outer++) {
+        // Compute base index (this skips the axis dimension)
+        std::vector<int64_t> indices(ndim, 0);
+        int64_t temp = outer;
+        for (int d = ndim - 1; d >= 0; d--) {
+            if (d == axis) continue;
+            int64_t dimSize = shape[d];
+            indices[d] = temp % dimSize;
+            temp /= dimSize;
+        }
+
+        // Find max along axis
+        double maxVal = -std::numeric_limits<double>::infinity();
+        for (int64_t a = 0; a < axisSize; a++) {
+            indices[axis] = a;
+            int64_t idx = 0;
+            for (int d = 0; d < ndim; d++) {
+                idx += indices[d] * strides[d];
+            }
+            if (dataX[idx] > maxVal) maxVal = dataX[idx];
+        }
+
+        // Compute exp and sum
+        double sum = 0.0;
+        for (int64_t a = 0; a < axisSize; a++) {
+            indices[axis] = a;
+            int64_t idx = 0;
+            for (int d = 0; d < ndim; d++) {
+                idx += indices[d] * strides[d];
+            }
+            dataR[idx] = std::exp(dataX[idx] - maxVal);
+            sum += dataR[idx];
+        }
+
+        // Normalize
+        for (int64_t a = 0; a < axisSize; a++) {
+            indices[axis] = a;
+            int64_t idx = 0;
+            for (int d = 0; d < ndim; d++) {
+                idx += indices[d] * strides[d];
+            }
+            dataR[idx] /= sum;
+        }
+    }
+
+    return result;
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Napi::Object math = Napi::Object::New(env);
 
@@ -5099,6 +5543,12 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Boolean reductions
     math.Set("any", Napi::Function::New(env, Any));
     math.Set("all", Napi::Function::New(env, All));
+
+    // Fused operations
+    math.Set("normalize", Napi::Function::New(env, Normalize));
+    math.Set("affine", Napi::Function::New(env, Affine));
+    math.Set("muladd", Napi::Function::New(env, MulAdd));
+    math.Set("softmax", Napi::Function::New(env, Softmax));
 
     exports.Set("math", math);
     return exports;

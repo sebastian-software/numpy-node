@@ -834,3 +834,84 @@ export function einsum(subscripts: string, ...operands: NDArray[]): NDArray {
   const nativeOperands = operands.map((op) => op._native);
   return new NDArray(native.einsum(subscripts, ...nativeOperands));
 }
+
+// ============================================================
+// Fused Operations (reduce N-API overhead)
+// ============================================================
+
+/**
+ * Normalize: (x - mean) / std
+ *
+ * Fused operation for batch normalization and z-score computation.
+ * Replaces: divide(subtract(x, mean), std)
+ *
+ * @param x Input array
+ * @param mean Mean value (scalar or array)
+ * @param std Standard deviation (scalar or array)
+ * @returns Normalized array
+ */
+export function normalize(x: NDArray, mean: NDArray | number, std: NDArray | number): NDArray {
+  return new NDArray(
+    math.normalize(
+      x._native,
+      mean instanceof NDArray ? mean._native : mean,
+      std instanceof NDArray ? std._native : std
+    )
+  );
+}
+
+/**
+ * Affine transformation: x * scale + bias
+ *
+ * Fused operation for linear transformations common in neural networks.
+ * Replaces: add(multiply(x, scale), bias)
+ *
+ * @param x Input array
+ * @param scale Scale factor (scalar or array)
+ * @param bias Bias term (scalar or array)
+ * @returns Transformed array
+ */
+export function affine(x: NDArray, scale: NDArray | number, bias: NDArray | number): NDArray {
+  return new NDArray(
+    math.affine(
+      x._native,
+      scale instanceof NDArray ? scale._native : scale,
+      bias instanceof NDArray ? bias._native : bias
+    )
+  );
+}
+
+/**
+ * Fused multiply-add: a * b + c
+ *
+ * Efficient computation of a * b + c in a single pass.
+ * Replaces: add(multiply(a, b), c)
+ *
+ * @param a First operand (array)
+ * @param b Second operand (scalar or array)
+ * @param c Third operand (scalar or array)
+ * @returns Result of a * b + c
+ */
+export function muladd(a: NDArray, b: NDArray | number, c: NDArray | number): NDArray {
+  return new NDArray(
+    math.muladd(
+      a._native,
+      b instanceof NDArray ? b._native : b,
+      c instanceof NDArray ? c._native : c
+    )
+  );
+}
+
+/**
+ * Numerically stable softmax
+ *
+ * Computes softmax along the specified axis:
+ * softmax(x) = exp(x - max(x)) / sum(exp(x - max(x)))
+ *
+ * @param x Input array
+ * @param axis Axis along which to compute softmax (default: -1, last axis)
+ * @returns Softmax probabilities (sum to 1 along axis)
+ */
+export function softmax(x: NDArray, axis?: number): NDArray {
+  return new NDArray(math.softmax(x._native, axis));
+}
