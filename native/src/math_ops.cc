@@ -876,6 +876,20 @@ Napi::Value Abs(const Napi::CallbackInfo& info) {
     return UnaryOp(info, [](double a) { return std::abs(a); });
 }
 
+Napi::Value Round(const Napi::CallbackInfo& info) {
+    // NumPy uses "round half to even" (banker's rounding)
+    // std::nearbyint uses the current rounding mode (FE_TONEAREST = ties to even)
+    return UnaryOp(info, [](double a) { return std::nearbyint(a); });
+}
+
+Napi::Value Floor(const Napi::CallbackInfo& info) {
+    return UnaryOp(info, [](double a) { return std::floor(a); });
+}
+
+Napi::Value Ceil(const Napi::CallbackInfo& info) {
+    return UnaryOp(info, [](double a) { return std::ceil(a); });
+}
+
 // Helper function to compute flat index from multi-dimensional indices
 static int64_t computeFlatIndex(const std::vector<int64_t>& indices, const std::vector<int64_t>& shape) {
     int64_t flatIndex = 0;
@@ -1246,6 +1260,535 @@ Napi::Value Min(const Napi::CallbackInfo& info) {
 #endif
 
     return Napi::Number::New(env, minVal);
+}
+
+Napi::Value Argmax(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* data = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+        const auto& shape = a->shape();
+        int ndim = static_cast<int>(shape.size());
+
+        // Handle negative axis
+        if (axis < 0) axis += ndim;
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Fast path for 2D arrays
+        if (ndim == 2) {
+            int64_t rows = shape[0];
+            int64_t cols = shape[1];
+
+            if (axis == 0) {
+                // Argmax along rows -> result has shape [cols]
+                Napi::Array jsResultShape = Napi::Array::New(env, 1);
+                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(cols)));
+
+                Napi::Object result = NativeNDArray::constructor.New({
+                    jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+                });
+                NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+                double* resultData = static_cast<double*>(resultArr->data());
+
+                // Initialize with first row values and index 0
+                std::vector<double> maxVals(cols);
+                for (int64_t col = 0; col < cols; col++) {
+                    maxVals[col] = data[col];
+                    resultData[col] = 0;
+                }
+
+                // Find argmax across rows
+                for (int64_t row = 1; row < rows; row++) {
+                    double* rowPtr = data + row * cols;
+                    for (int64_t col = 0; col < cols; col++) {
+                        if (rowPtr[col] > maxVals[col]) {
+                            maxVals[col] = rowPtr[col];
+                            resultData[col] = static_cast<double>(row);
+                        }
+                    }
+                }
+                return result;
+
+            } else { // axis == 1
+                // Argmax along columns -> result has shape [rows]
+                Napi::Array jsResultShape = Napi::Array::New(env, 1);
+                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+
+                Napi::Object result = NativeNDArray::constructor.New({
+                    jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+                });
+                NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+                double* resultData = static_cast<double*>(resultArr->data());
+
+                for (int64_t row = 0; row < rows; row++) {
+                    double* rowPtr = data + row * cols;
+                    double maxVal = rowPtr[0];
+                    int64_t maxIdx = 0;
+                    for (int64_t col = 1; col < cols; col++) {
+                        if (rowPtr[col] > maxVal) {
+                            maxVal = rowPtr[col];
+                            maxIdx = col;
+                        }
+                    }
+                    resultData[row] = static_cast<double>(maxIdx);
+                }
+                return result;
+            }
+        }
+
+        // Generic N-dim case: not yet supported
+        Napi::Error::New(env, "Axis reduction only supported for 2D arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // No axis - global argmax
+    double maxVal = data[0];
+    int64_t maxIdx = 0;
+    for (int64_t i = 1; i < size; i++) {
+        if (data[i] > maxVal) {
+            maxVal = data[i];
+            maxIdx = i;
+        }
+    }
+
+    return Napi::Number::New(env, static_cast<double>(maxIdx));
+}
+
+Napi::Value Argmin(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* data = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+        const auto& shape = a->shape();
+        int ndim = static_cast<int>(shape.size());
+
+        // Handle negative axis
+        if (axis < 0) axis += ndim;
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Fast path for 2D arrays
+        if (ndim == 2) {
+            int64_t rows = shape[0];
+            int64_t cols = shape[1];
+
+            if (axis == 0) {
+                // Argmin along rows -> result has shape [cols]
+                Napi::Array jsResultShape = Napi::Array::New(env, 1);
+                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(cols)));
+
+                Napi::Object result = NativeNDArray::constructor.New({
+                    jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+                });
+                NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+                double* resultData = static_cast<double*>(resultArr->data());
+
+                // Initialize with first row values and index 0
+                std::vector<double> minVals(cols);
+                for (int64_t col = 0; col < cols; col++) {
+                    minVals[col] = data[col];
+                    resultData[col] = 0;
+                }
+
+                // Find argmin across rows
+                for (int64_t row = 1; row < rows; row++) {
+                    double* rowPtr = data + row * cols;
+                    for (int64_t col = 0; col < cols; col++) {
+                        if (rowPtr[col] < minVals[col]) {
+                            minVals[col] = rowPtr[col];
+                            resultData[col] = static_cast<double>(row);
+                        }
+                    }
+                }
+                return result;
+
+            } else { // axis == 1
+                // Argmin along columns -> result has shape [rows]
+                Napi::Array jsResultShape = Napi::Array::New(env, 1);
+                jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(rows)));
+
+                Napi::Object result = NativeNDArray::constructor.New({
+                    jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+                });
+                NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+                double* resultData = static_cast<double*>(resultArr->data());
+
+                for (int64_t row = 0; row < rows; row++) {
+                    double* rowPtr = data + row * cols;
+                    double minVal = rowPtr[0];
+                    int64_t minIdx = 0;
+                    for (int64_t col = 1; col < cols; col++) {
+                        if (rowPtr[col] < minVal) {
+                            minVal = rowPtr[col];
+                            minIdx = col;
+                        }
+                    }
+                    resultData[row] = static_cast<double>(minIdx);
+                }
+                return result;
+            }
+        }
+
+        // Generic N-dim case: not yet supported
+        Napi::Error::New(env, "Axis reduction only supported for 2D arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // No axis - global argmin
+    double minVal = data[0];
+    int64_t minIdx = 0;
+    for (int64_t i = 1; i < size; i++) {
+        if (data[i] < minVal) {
+            minVal = data[i];
+            minIdx = i;
+        }
+    }
+
+    return Napi::Number::New(env, static_cast<double>(minIdx));
+}
+
+Napi::Value Clip(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 3) {
+        Napi::TypeError::New(env, "Expected array, min, max").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double minVal = info[1].As<Napi::Number>().DoubleValue();
+    double maxVal = info[2].As<Napi::Number>().DoubleValue();
+
+    double* dataA = static_cast<double*>(a->data());
+    int64_t size = a->size();
+    const auto& shape = a->shape();
+
+    // Create result array with same shape
+    Napi::Array jsResultShape = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        jsResultShape.Set(static_cast<uint32_t>(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataC = static_cast<double*>(resultArr->data());
+
+#if defined(USE_ACCELERATE)
+    vDSP_vclipD(dataA, 1, &minVal, &maxVal, dataC, 1, size);
+#else
+    for (int64_t i = 0; i < size; i++) {
+        dataC[i] = std::max(minVal, std::min(maxVal, dataA[i]));
+    }
+#endif
+
+    return result;
+}
+
+Napi::Value Where(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 3) {
+        Napi::TypeError::New(env, "Expected condition, x, y").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* condition = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* x = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+    NativeNDArray* y = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[2].As<Napi::Object>());
+
+    // Handle different dtype for condition (bool uses uint8, float uses double)
+    bool condIsBool = condition->dtype() == DType::Bool;
+    uint8_t* dataCondBool = condIsBool ? static_cast<uint8_t*>(condition->data()) : nullptr;
+    double* dataCondDouble = condIsBool ? nullptr : static_cast<double*>(condition->data());
+
+    double* dataX = static_cast<double*>(x->data());
+    double* dataY = static_cast<double*>(y->data());
+
+    const auto& shapeCond = condition->shape();
+    const auto& shapeX = x->shape();
+    const auto& shapeY = y->shape();
+
+    // Helper lambda to check condition value
+    auto checkCond = [condIsBool, dataCondBool, dataCondDouble](int64_t idx) -> bool {
+        if (condIsBool) {
+            return dataCondBool[idx] != 0;
+        } else {
+            return dataCondDouble[idx] != 0.0;
+        }
+    };
+
+    // Fast path: all arrays have the same shape
+    if (shapeCond == shapeX && shapeX == shapeY) {
+        int64_t size = condition->size();
+
+        // Create result array with same shape
+        Napi::Array jsResultShape = Napi::Array::New(env, shapeCond.size());
+        for (size_t i = 0; i < shapeCond.size(); i++) {
+            jsResultShape.Set(static_cast<uint32_t>(i), Napi::Number::New(env, static_cast<double>(shapeCond[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* dataC = static_cast<double*>(resultArr->data());
+
+        for (int64_t i = 0; i < size; i++) {
+            dataC[i] = checkCond(i) ? dataX[i] : dataY[i];
+        }
+
+        return result;
+    }
+
+    // Broadcasting case: compute broadcast shape
+    // Determine max ndim
+    size_t maxNdim = std::max({shapeCond.size(), shapeX.size(), shapeY.size()});
+
+    // Pad shapes to maxNdim (prepend 1s)
+    auto padShape = [maxNdim](const std::vector<int64_t>& shape) {
+        std::vector<int64_t> padded(maxNdim, 1);
+        size_t offset = maxNdim - shape.size();
+        for (size_t i = 0; i < shape.size(); i++) {
+            padded[offset + i] = shape[i];
+        }
+        return padded;
+    };
+
+    std::vector<int64_t> paddedCond = padShape(shapeCond);
+    std::vector<int64_t> paddedX = padShape(shapeX);
+    std::vector<int64_t> paddedY = padShape(shapeY);
+
+    // Compute broadcast shape
+    std::vector<int64_t> resultShape(maxNdim);
+    for (size_t i = 0; i < maxNdim; i++) {
+        int64_t dimCond = paddedCond[i];
+        int64_t dimX = paddedX[i];
+        int64_t dimY = paddedY[i];
+
+        // Check broadcast compatibility
+        if ((dimCond != 1 && dimX != 1 && dimCond != dimX) ||
+            (dimCond != 1 && dimY != 1 && dimCond != dimY) ||
+            (dimX != 1 && dimY != 1 && dimX != dimY)) {
+            Napi::Error::New(env, "Shapes are not broadcast compatible").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        resultShape[i] = std::max({dimCond, dimX, dimY});
+    }
+
+    // Create result array
+    Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+    for (size_t i = 0; i < resultShape.size(); i++) {
+        jsResultShape.Set(static_cast<uint32_t>(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    // Compute strides for broadcasting
+    auto computeStrides = [](const std::vector<int64_t>& shape) {
+        std::vector<int64_t> strides(shape.size());
+        if (shape.empty()) return strides;
+        strides.back() = 1;
+        for (int i = static_cast<int>(shape.size()) - 2; i >= 0; i--) {
+            strides[i] = strides[i + 1] * shape[i + 1];
+        }
+        return strides;
+    };
+
+    std::vector<int64_t> stridesCond = computeStrides(paddedCond);
+    std::vector<int64_t> stridesX = computeStrides(paddedX);
+    std::vector<int64_t> stridesY = computeStrides(paddedY);
+    std::vector<int64_t> stridesResult = computeStrides(resultShape);
+
+    // Total number of elements
+    int64_t totalSize = 1;
+    for (size_t i = 0; i < resultShape.size(); i++) {
+        totalSize *= resultShape[i];
+    }
+
+    // Iterate over all elements using linear index -> multi-index -> broadcast lookup
+    for (int64_t idx = 0; idx < totalSize; idx++) {
+        // Convert linear index to multi-index
+        std::vector<int64_t> multiIdx(maxNdim);
+        int64_t remaining = idx;
+        for (size_t i = 0; i < maxNdim; i++) {
+            multiIdx[i] = remaining / stridesResult[i];
+            remaining %= stridesResult[i];
+        }
+
+        // Compute indices into each input array (with broadcasting)
+        int64_t idxCond = 0, idxX = 0, idxY = 0;
+        for (size_t i = 0; i < maxNdim; i++) {
+            int64_t mi = multiIdx[i];
+            if (paddedCond[i] > 1) idxCond += mi * stridesCond[i];
+            if (paddedX[i] > 1) idxX += mi * stridesX[i];
+            if (paddedY[i] > 1) idxY += mi * stridesY[i];
+        }
+
+        dataC[idx] = checkCond(idxCond) ? dataX[idxX] : dataY[idxY];
+    }
+
+    return result;
+}
+
+Napi::Value Squeeze(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    const auto& shape = a->shape();
+
+    // Check for axis parameter
+    int axisToSqueeze = -1;
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        axisToSqueeze = info[1].As<Napi::Number>().Int32Value();
+        int ndim = static_cast<int>(shape.size());
+
+        // Handle negative axis
+        if (axisToSqueeze < 0) axisToSqueeze += ndim;
+
+        if (axisToSqueeze < 0 || axisToSqueeze >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Check that the dimension is actually 1
+        if (shape[axisToSqueeze] != 1) {
+            Napi::Error::New(env, "Cannot squeeze axis with size != 1").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+    }
+
+    // Build new shape by removing dimensions of size 1
+    std::vector<int64_t> newShape;
+    for (size_t i = 0; i < shape.size(); i++) {
+        if (axisToSqueeze >= 0) {
+            // Only squeeze the specified axis
+            if (static_cast<int>(i) != axisToSqueeze) {
+                newShape.push_back(shape[i]);
+            }
+        } else {
+            // Squeeze all dimensions of size 1
+            if (shape[i] != 1) {
+                newShape.push_back(shape[i]);
+            }
+        }
+    }
+
+    // If all dimensions were squeezed, result is a scalar (shape [1])
+    if (newShape.empty()) {
+        newShape.push_back(1);
+    }
+
+    // Create result array with new shape (copy data)
+    Napi::Array jsResultShape = Napi::Array::New(env, newShape.size());
+    for (size_t i = 0; i < newShape.size(); i++) {
+        jsResultShape.Set(static_cast<uint32_t>(i), Napi::Number::New(env, static_cast<double>(newShape[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+
+    // Copy data
+    double* dataA = static_cast<double*>(a->data());
+    double* dataC = static_cast<double*>(resultArr->data());
+    int64_t size = a->size();
+    std::memcpy(dataC, dataA, size * sizeof(double));
+
+    return result;
+}
+
+Napi::Value ExpandDims(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected array and axis").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    int axis = info[1].As<Napi::Number>().Int32Value();
+    const auto& shape = a->shape();
+    int ndim = static_cast<int>(shape.size());
+
+    // Handle negative axis (axis can be from -ndim-1 to ndim inclusive)
+    if (axis < 0) axis += ndim + 1;
+
+    if (axis < 0 || axis > ndim) {
+        Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Build new shape with dimension of size 1 inserted at axis
+    std::vector<int64_t> newShape;
+    for (int i = 0; i < ndim; i++) {
+        if (i == axis) {
+            newShape.push_back(1);
+        }
+        newShape.push_back(shape[i]);
+    }
+    // Handle case where axis is at the end
+    if (axis == ndim) {
+        newShape.push_back(1);
+    }
+
+    // Create result array with new shape (copy data)
+    Napi::Array jsResultShape = Napi::Array::New(env, newShape.size());
+    for (size_t i = 0; i < newShape.size(); i++) {
+        jsResultShape.Set(static_cast<uint32_t>(i), Napi::Number::New(env, static_cast<double>(newShape[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+
+    // Copy data
+    double* dataA = static_cast<double*>(a->data());
+    double* dataC = static_cast<double*>(resultArr->data());
+    int64_t size = a->size();
+    std::memcpy(dataC, dataA, size * sizeof(double));
+
+    return result;
 }
 
 Napi::Value Mean(const Napi::CallbackInfo& info) {
@@ -1739,6 +2282,597 @@ Napi::Value Var(const Napi::CallbackInfo& info) {
     var /= size;
 
     return Napi::Number::New(env, var);
+}
+
+/**
+ * Cumulative sum along axis
+ * cumsum(a, axis?) - Returns array with cumulative sums
+ */
+Napi::Value Cumsum(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* data = static_cast<double*>(a->data());
+    const auto& shape = a->shape();
+    int64_t size = a->size();
+    int ndim = static_cast<int>(shape.size());
+
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+
+        // Handle negative axis
+        if (axis < 0) axis += ndim;
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Create result with same shape
+        Napi::Array jsResultShape = Napi::Array::New(env, shape.size());
+        for (size_t i = 0; i < shape.size(); i++) {
+            jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* resultData = static_cast<double*>(resultArr->data());
+
+        // Fast path for 2D arrays
+        if (ndim == 2) {
+            int64_t rows = shape[0];
+            int64_t cols = shape[1];
+
+            if (axis == 0) {
+                // Cumsum along rows (down columns)
+                // First row is same as input
+                std::memcpy(resultData, data, cols * sizeof(double));
+                // Cumulative sum for subsequent rows
+                for (int64_t row = 1; row < rows; row++) {
+                    for (int64_t col = 0; col < cols; col++) {
+                        resultData[row * cols + col] = resultData[(row - 1) * cols + col] + data[row * cols + col];
+                    }
+                }
+            } else { // axis == 1
+                // Cumsum along columns (across rows)
+                for (int64_t row = 0; row < rows; row++) {
+                    resultData[row * cols] = data[row * cols];
+                    for (int64_t col = 1; col < cols; col++) {
+                        resultData[row * cols + col] = resultData[row * cols + col - 1] + data[row * cols + col];
+                    }
+                }
+            }
+            return result;
+        }
+
+        // Fast path for 1D arrays
+        if (ndim == 1) {
+            resultData[0] = data[0];
+            for (int64_t i = 1; i < size; i++) {
+                resultData[i] = resultData[i - 1] + data[i];
+            }
+            return result;
+        }
+
+        // Generic N-dimensional case
+        // Compute strides for the input array
+        std::vector<int64_t> strides(ndim);
+        strides[ndim - 1] = 1;
+        for (int i = ndim - 2; i >= 0; i--) {
+            strides[i] = strides[i + 1] * shape[i + 1];
+        }
+
+        int64_t axisStride = strides[axis];
+        int64_t axisSize = shape[axis];
+
+        // Copy input to result first
+        std::memcpy(resultData, data, size * sizeof(double));
+
+        // Iterate over all "slices" perpendicular to the axis
+        int64_t outerSize = size / axisSize;
+        for (int64_t outer = 0; outer < outerSize; outer++) {
+            // Compute base index for this slice
+            int64_t baseIdx = 0;
+            int64_t temp = outer;
+            for (int d = ndim - 1; d >= 0; d--) {
+                if (d == axis) continue;
+                int64_t dimStride = 1;
+                for (int dd = d + 1; dd < ndim; dd++) {
+                    if (dd != axis) dimStride *= shape[dd];
+                }
+                int64_t coord = temp % shape[d];
+                temp /= shape[d];
+                baseIdx += coord * strides[d];
+            }
+
+            // Compute cumulative sum along axis
+            for (int64_t k = 1; k < axisSize; k++) {
+                resultData[baseIdx + k * axisStride] += resultData[baseIdx + (k - 1) * axisStride];
+            }
+        }
+
+        return result;
+    }
+
+    // No axis - flatten and compute cumsum
+    Napi::Array jsResultShape = Napi::Array::New(env, 1);
+    jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(size)));
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* resultData = static_cast<double*>(resultArr->data());
+
+    resultData[0] = data[0];
+    for (int64_t i = 1; i < size; i++) {
+        resultData[i] = resultData[i - 1] + data[i];
+    }
+
+    return result;
+}
+
+/**
+ * Cumulative product along axis
+ * cumprod(a, axis?) - Returns array with cumulative products
+ */
+Napi::Value Cumprod(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected array").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    double* data = static_cast<double*>(a->data());
+    const auto& shape = a->shape();
+    int64_t size = a->size();
+    int ndim = static_cast<int>(shape.size());
+
+    // Check for axis parameter
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+
+        // Handle negative axis
+        if (axis < 0) axis += ndim;
+
+        if (axis < 0 || axis >= ndim) {
+            Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Create result with same shape
+        Napi::Array jsResultShape = Napi::Array::New(env, shape.size());
+        for (size_t i = 0; i < shape.size(); i++) {
+            jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+        }
+
+        Napi::Object result = NativeNDArray::constructor.New({
+            jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+        });
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* resultData = static_cast<double*>(resultArr->data());
+
+        // Fast path for 2D arrays
+        if (ndim == 2) {
+            int64_t rows = shape[0];
+            int64_t cols = shape[1];
+
+            if (axis == 0) {
+                // Cumprod along rows (down columns)
+                std::memcpy(resultData, data, cols * sizeof(double));
+                for (int64_t row = 1; row < rows; row++) {
+                    for (int64_t col = 0; col < cols; col++) {
+                        resultData[row * cols + col] = resultData[(row - 1) * cols + col] * data[row * cols + col];
+                    }
+                }
+            } else { // axis == 1
+                // Cumprod along columns (across rows)
+                for (int64_t row = 0; row < rows; row++) {
+                    resultData[row * cols] = data[row * cols];
+                    for (int64_t col = 1; col < cols; col++) {
+                        resultData[row * cols + col] = resultData[row * cols + col - 1] * data[row * cols + col];
+                    }
+                }
+            }
+            return result;
+        }
+
+        // Fast path for 1D arrays
+        if (ndim == 1) {
+            resultData[0] = data[0];
+            for (int64_t i = 1; i < size; i++) {
+                resultData[i] = resultData[i - 1] * data[i];
+            }
+            return result;
+        }
+
+        // Generic N-dimensional case
+        std::vector<int64_t> strides(ndim);
+        strides[ndim - 1] = 1;
+        for (int i = ndim - 2; i >= 0; i--) {
+            strides[i] = strides[i + 1] * shape[i + 1];
+        }
+
+        int64_t axisStride = strides[axis];
+        int64_t axisSize = shape[axis];
+
+        // Copy input to result first
+        std::memcpy(resultData, data, size * sizeof(double));
+
+        // Iterate over all "slices" perpendicular to the axis
+        int64_t outerSize = size / axisSize;
+        for (int64_t outer = 0; outer < outerSize; outer++) {
+            int64_t baseIdx = 0;
+            int64_t temp = outer;
+            for (int d = ndim - 1; d >= 0; d--) {
+                if (d == axis) continue;
+                int64_t dimStride = 1;
+                for (int dd = d + 1; dd < ndim; dd++) {
+                    if (dd != axis) dimStride *= shape[dd];
+                }
+                int64_t coord = temp % shape[d];
+                temp /= shape[d];
+                baseIdx += coord * strides[d];
+            }
+
+            // Compute cumulative product along axis
+            for (int64_t k = 1; k < axisSize; k++) {
+                resultData[baseIdx + k * axisStride] *= resultData[baseIdx + (k - 1) * axisStride];
+            }
+        }
+
+        return result;
+    }
+
+    // No axis - flatten and compute cumprod
+    Napi::Array jsResultShape = Napi::Array::New(env, 1);
+    jsResultShape.Set(uint32_t(0), Napi::Number::New(env, static_cast<double>(size)));
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* resultData = static_cast<double*>(resultArr->data());
+
+    resultData[0] = data[0];
+    for (int64_t i = 1; i < size; i++) {
+        resultData[i] = resultData[i - 1] * data[i];
+    }
+
+    return result;
+}
+
+/**
+ * Concatenate arrays along an existing axis
+ * concatenate(arrays, axis=0) - Join arrays along axis
+ */
+Napi::Value Concatenate(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsArray()) {
+        Napi::TypeError::New(env, "Expected array of arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Array arrays = info[0].As<Napi::Array>();
+    uint32_t numArrays = arrays.Length();
+
+    if (numArrays == 0) {
+        Napi::Error::New(env, "Need at least one array to concatenate").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Get axis (default 0)
+    int axis = 0;
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        axis = info[1].As<Napi::Number>().Int32Value();
+    }
+
+    // Get first array to determine shape
+    NativeNDArray* first = Napi::ObjectWrap<NativeNDArray>::Unwrap(
+        arrays.Get(uint32_t(0)).As<Napi::Object>()
+    );
+    const auto& firstShape = first->shape();
+    int ndim = static_cast<int>(firstShape.size());
+
+    // Handle negative axis
+    if (axis < 0) axis += ndim;
+
+    if (axis < 0 || axis >= ndim) {
+        Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Collect all arrays and validate shapes
+    std::vector<NativeNDArray*> arrPtrs;
+    arrPtrs.reserve(numArrays);
+    int64_t totalAxisSize = 0;
+
+    for (uint32_t i = 0; i < numArrays; i++) {
+        NativeNDArray* arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(
+            arrays.Get(i).As<Napi::Object>()
+        );
+        arrPtrs.push_back(arr);
+
+        const auto& shape = arr->shape();
+
+        // Validate ndim
+        if (static_cast<int>(shape.size()) != ndim) {
+            Napi::Error::New(env, "All arrays must have same number of dimensions").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Validate all dimensions except axis
+        for (int d = 0; d < ndim; d++) {
+            if (d != axis && shape[d] != firstShape[d]) {
+                Napi::Error::New(env, "All arrays must have same shape except for concatenation axis").ThrowAsJavaScriptException();
+                return env.Undefined();
+            }
+        }
+
+        totalAxisSize += shape[axis];
+    }
+
+    // Build result shape
+    std::vector<int64_t> resultShape = firstShape;
+    resultShape[axis] = totalAxisSize;
+
+    // Create result array
+    Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+    for (size_t i = 0; i < resultShape.size(); i++) {
+        jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* resultData = static_cast<double*>(resultArr->data());
+
+    // Fast path for 1D arrays
+    if (ndim == 1) {
+        int64_t offset = 0;
+        for (uint32_t i = 0; i < numArrays; i++) {
+            double* srcData = static_cast<double*>(arrPtrs[i]->data());
+            int64_t srcSize = arrPtrs[i]->size();
+            std::memcpy(resultData + offset, srcData, srcSize * sizeof(double));
+            offset += srcSize;
+        }
+        return result;
+    }
+
+    // Fast path for 2D arrays
+    if (ndim == 2) {
+        int64_t rows = resultShape[0];
+        int64_t cols = resultShape[1];
+
+        if (axis == 0) {
+            // Concatenate along rows
+            int64_t rowOffset = 0;
+            for (uint32_t i = 0; i < numArrays; i++) {
+                double* srcData = static_cast<double*>(arrPtrs[i]->data());
+                int64_t srcRows = arrPtrs[i]->shape()[0];
+                std::memcpy(resultData + rowOffset * cols, srcData, srcRows * cols * sizeof(double));
+                rowOffset += srcRows;
+            }
+        } else { // axis == 1
+            // Concatenate along columns
+            for (int64_t row = 0; row < rows; row++) {
+                int64_t colOffset = 0;
+                for (uint32_t i = 0; i < numArrays; i++) {
+                    double* srcData = static_cast<double*>(arrPtrs[i]->data());
+                    int64_t srcCols = arrPtrs[i]->shape()[1];
+                    std::memcpy(resultData + row * cols + colOffset,
+                               srcData + row * srcCols,
+                               srcCols * sizeof(double));
+                    colOffset += srcCols;
+                }
+            }
+        }
+        return result;
+    }
+
+    // Generic N-dimensional case
+    // Compute strides for result array
+    std::vector<int64_t> resultStrides(ndim);
+    resultStrides[ndim - 1] = 1;
+    for (int i = ndim - 2; i >= 0; i--) {
+        resultStrides[i] = resultStrides[i + 1] * resultShape[i + 1];
+    }
+
+    // Copy each array
+    int64_t axisOffset = 0;
+    for (uint32_t arrIdx = 0; arrIdx < numArrays; arrIdx++) {
+        NativeNDArray* arr = arrPtrs[arrIdx];
+        double* srcData = static_cast<double*>(arr->data());
+        const auto& srcShape = arr->shape();
+        int64_t srcSize = arr->size();
+
+        // Compute source strides
+        std::vector<int64_t> srcStrides(ndim);
+        srcStrides[ndim - 1] = 1;
+        for (int i = ndim - 2; i >= 0; i--) {
+            srcStrides[i] = srcStrides[i + 1] * srcShape[i + 1];
+        }
+
+        // Copy elements
+        std::vector<int64_t> indices(ndim, 0);
+        for (int64_t srcIdx = 0; srcIdx < srcSize; srcIdx++) {
+            // Compute multi-dimensional indices
+            int64_t temp = srcIdx;
+            for (int d = ndim - 1; d >= 0; d--) {
+                indices[d] = temp % srcShape[d];
+                temp /= srcShape[d];
+            }
+
+            // Compute destination index (offset the axis dimension)
+            int64_t dstIdx = 0;
+            for (int d = 0; d < ndim; d++) {
+                int64_t coord = (d == axis) ? indices[d] + axisOffset : indices[d];
+                dstIdx += coord * resultStrides[d];
+            }
+
+            resultData[dstIdx] = srcData[srcIdx];
+        }
+
+        axisOffset += srcShape[axis];
+    }
+
+    return result;
+}
+
+/**
+ * Stack arrays along a new axis
+ * stack(arrays, axis=0) - Join arrays along a NEW axis
+ */
+Napi::Value Stack(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsArray()) {
+        Napi::TypeError::New(env, "Expected array of arrays").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Array arrays = info[0].As<Napi::Array>();
+    uint32_t numArrays = arrays.Length();
+
+    if (numArrays == 0) {
+        Napi::Error::New(env, "Need at least one array to stack").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Get axis (default 0)
+    int axis = 0;
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        axis = info[1].As<Napi::Number>().Int32Value();
+    }
+
+    // Get first array to determine shape
+    NativeNDArray* first = Napi::ObjectWrap<NativeNDArray>::Unwrap(
+        arrays.Get(uint32_t(0)).As<Napi::Object>()
+    );
+    const auto& firstShape = first->shape();
+    int ndim = static_cast<int>(firstShape.size());
+    int newNdim = ndim + 1;
+
+    // Handle negative axis (in the NEW dimension space)
+    if (axis < 0) axis += newNdim;
+
+    if (axis < 0 || axis > ndim) {
+        Napi::Error::New(env, "Axis out of bounds").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Collect all arrays and validate shapes
+    std::vector<NativeNDArray*> arrPtrs;
+    arrPtrs.reserve(numArrays);
+
+    for (uint32_t i = 0; i < numArrays; i++) {
+        NativeNDArray* arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(
+            arrays.Get(i).As<Napi::Object>()
+        );
+        arrPtrs.push_back(arr);
+
+        const auto& shape = arr->shape();
+
+        // All arrays must have same shape
+        if (shape != firstShape) {
+            Napi::Error::New(env, "All arrays must have same shape for stack").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+    }
+
+    // Build result shape (insert new dimension at axis)
+    std::vector<int64_t> resultShape;
+    resultShape.reserve(newNdim);
+    for (int d = 0; d < axis; d++) {
+        resultShape.push_back(firstShape[d]);
+    }
+    resultShape.push_back(static_cast<int64_t>(numArrays));
+    for (int d = axis; d < ndim; d++) {
+        resultShape.push_back(firstShape[d]);
+    }
+
+    // Create result array
+    Napi::Array jsResultShape = Napi::Array::New(env, resultShape.size());
+    for (size_t i = 0; i < resultShape.size(); i++) {
+        jsResultShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(resultShape[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsResultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* resultData = static_cast<double*>(resultArr->data());
+
+    // Fast path for stacking 1D arrays along axis 0 (creates 2D array [n, size])
+    if (ndim == 1 && axis == 0) {
+        int64_t arrSize = first->size();
+        for (uint32_t i = 0; i < numArrays; i++) {
+            double* srcData = static_cast<double*>(arrPtrs[i]->data());
+            std::memcpy(resultData + i * arrSize, srcData, arrSize * sizeof(double));
+        }
+        return result;
+    }
+
+    // Fast path for stacking 1D arrays along axis 1 (creates 2D array [size, n])
+    if (ndim == 1 && axis == 1) {
+        int64_t arrSize = first->size();
+        for (int64_t j = 0; j < arrSize; j++) {
+            for (uint32_t i = 0; i < numArrays; i++) {
+                double* srcData = static_cast<double*>(arrPtrs[i]->data());
+                resultData[j * numArrays + i] = srcData[j];
+            }
+        }
+        return result;
+    }
+
+    // Generic case: compute strides and copy
+    std::vector<int64_t> resultStrides(newNdim);
+    resultStrides[newNdim - 1] = 1;
+    for (int i = newNdim - 2; i >= 0; i--) {
+        resultStrides[i] = resultStrides[i + 1] * resultShape[i + 1];
+    }
+
+    int64_t srcSize = first->size();
+
+    for (uint32_t arrIdx = 0; arrIdx < numArrays; arrIdx++) {
+        double* srcData = static_cast<double*>(arrPtrs[arrIdx]->data());
+
+        std::vector<int64_t> srcIndices(ndim, 0);
+        for (int64_t srcIdx = 0; srcIdx < srcSize; srcIdx++) {
+            // Compute source multi-dimensional indices
+            int64_t temp = srcIdx;
+            for (int d = ndim - 1; d >= 0; d--) {
+                srcIndices[d] = temp % firstShape[d];
+                temp /= firstShape[d];
+            }
+
+            // Build destination indices (insert arrIdx at position axis)
+            int64_t dstIdx = 0;
+            for (int d = 0; d < axis; d++) {
+                dstIdx += srcIndices[d] * resultStrides[d];
+            }
+            dstIdx += arrIdx * resultStrides[axis];
+            for (int d = axis; d < ndim; d++) {
+                dstIdx += srcIndices[d] * resultStrides[d + 1];
+            }
+
+            resultData[dstIdx] = srcData[srcIdx];
+        }
+    }
+
+    return result;
 }
 
 Napi::Value Median(const Napi::CallbackInfo& info) {
@@ -2921,6 +4055,971 @@ Napi::Value All(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(env, true);
 }
 
+// ============================================================
+// Sorting and Searching Functions
+// ============================================================
+
+// Helper to create NativeNDArray with shape (always float64)
+static Napi::Object createNDArray(Napi::Env env, const std::vector<int64_t>& shape) {
+    Napi::Array jsShape = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+    return NativeNDArray::constructor.New({
+        jsShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+}
+
+/**
+ * Compute n-th discrete difference along the given axis
+ * diff(a, n=1, axis=-1)
+ */
+Napi::Value Diff(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    int n = 1;
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        n = info[1].As<Napi::Number>().Int32Value();
+    }
+
+    int axis = -1;
+    if (info.Length() >= 3 && !info[2].IsUndefined()) {
+        axis = info[2].As<Napi::Number>().Int32Value();
+    }
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    int ndim = static_cast<int>(shapeA.size());
+
+    // Handle negative axis
+    if (axis < 0) {
+        axis = ndim + axis;
+    }
+
+    if (axis < 0 || axis >= ndim) {
+        Napi::Error::New(env, "axis out of bounds").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    if (n < 0) {
+        Napi::Error::New(env, "n must be non-negative").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int64_t axisSize = shapeA[axis];
+    if (n >= axisSize) {
+        // Result is empty along this axis
+        std::vector<int64_t> resultShape = shapeA;
+        resultShape[axis] = 0;
+        Napi::Object result = createNDArray(env, resultShape);
+        return result;
+    }
+
+    // For n differences, output size along axis is (original - n)
+    std::vector<int64_t> resultShape = shapeA;
+    resultShape[axis] = axisSize - n;
+
+    Napi::Object result = createNDArray(env, resultShape);
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    const double* dataA = static_cast<double*>(a->data());
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    // Compute strides for iteration
+    int64_t outerSize = 1;
+    for (int i = 0; i < axis; i++) {
+        outerSize *= shapeA[i];
+    }
+    int64_t innerSize = 1;
+    for (int i = axis + 1; i < ndim; i++) {
+        innerSize *= shapeA[i];
+    }
+
+    // First compute first difference, then iterate for n > 1
+    // We need a temporary buffer for multiple differences
+    std::vector<double> tempBuffer;
+    if (n > 1) {
+        int64_t maxTempSize = outerSize * axisSize * innerSize;
+        tempBuffer.resize(maxTempSize);
+    }
+
+    const double* src = dataA;
+    double* dst = (n > 1) ? tempBuffer.data() : dataC;
+    int64_t currentAxisSize = axisSize;
+
+    for (int diffIter = 0; diffIter < n; diffIter++) {
+        int64_t newAxisSize = currentAxisSize - 1;
+
+        for (int64_t outer = 0; outer < outerSize; outer++) {
+            for (int64_t i = 0; i < newAxisSize; i++) {
+                for (int64_t inner = 0; inner < innerSize; inner++) {
+                    int64_t srcIdx1 = outer * currentAxisSize * innerSize + i * innerSize + inner;
+                    int64_t srcIdx2 = outer * currentAxisSize * innerSize + (i + 1) * innerSize + inner;
+                    int64_t dstIdx = outer * newAxisSize * innerSize + i * innerSize + inner;
+                    dst[dstIdx] = src[srcIdx2] - src[srcIdx1];
+                }
+            }
+        }
+
+        currentAxisSize = newAxisSize;
+
+        if (diffIter < n - 1) {
+            // Prepare for next iteration
+            if (diffIter == 0) {
+                src = tempBuffer.data();
+            }
+            // For intermediate iterations, we work in-place on tempBuffer
+            // For the last iteration (diffIter == n-2), we write to dataC
+            if (diffIter == n - 2) {
+                dst = dataC;
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Return a sorted copy of the array
+ * sort(a, axis=-1)
+ */
+Napi::Value Sort(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    int axis = -1;
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        axis = info[1].As<Napi::Number>().Int32Value();
+    }
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    int ndim = static_cast<int>(shapeA.size());
+
+    // Handle negative axis
+    if (axis < 0) {
+        axis = ndim + axis;
+    }
+
+    if (axis < 0 || axis >= ndim) {
+        Napi::Error::New(env, "axis out of bounds").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create result with same shape
+    Napi::Object result = createNDArray(env, shapeA);
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    const double* dataA = static_cast<double*>(a->data());
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    // Copy data first
+    int64_t totalSize = a->size();
+    std::copy(dataA, dataA + totalSize, dataC);
+
+    // Compute strides for iteration
+    int64_t outerSize = 1;
+    for (int i = 0; i < axis; i++) {
+        outerSize *= shapeA[i];
+    }
+    int64_t axisSize = shapeA[axis];
+    int64_t innerSize = 1;
+    for (int i = axis + 1; i < ndim; i++) {
+        innerSize *= shapeA[i];
+    }
+
+    // Sort along axis
+    if (innerSize == 1) {
+        // Contiguous case - sort directly
+        for (int64_t outer = 0; outer < outerSize; outer++) {
+            double* start = dataC + outer * axisSize;
+            std::sort(start, start + axisSize);
+        }
+    } else {
+        // Non-contiguous case - need to gather, sort, scatter
+        std::vector<double> temp(axisSize);
+        for (int64_t outer = 0; outer < outerSize; outer++) {
+            for (int64_t inner = 0; inner < innerSize; inner++) {
+                // Gather
+                for (int64_t i = 0; i < axisSize; i++) {
+                    temp[i] = dataC[outer * axisSize * innerSize + i * innerSize + inner];
+                }
+                // Sort
+                std::sort(temp.begin(), temp.end());
+                // Scatter
+                for (int64_t i = 0; i < axisSize; i++) {
+                    dataC[outer * axisSize * innerSize + i * innerSize + inner] = temp[i];
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Return the indices that would sort the array
+ * argsort(a, axis=-1)
+ */
+Napi::Value Argsort(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    int axis = -1;
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        axis = info[1].As<Napi::Number>().Int32Value();
+    }
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    int ndim = static_cast<int>(shapeA.size());
+
+    // Handle negative axis
+    if (axis < 0) {
+        axis = ndim + axis;
+    }
+
+    if (axis < 0 || axis >= ndim) {
+        Napi::Error::New(env, "axis out of bounds").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create result with same shape (indices as float64)
+    Napi::Object result = createNDArray(env, shapeA);
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    const double* dataA = static_cast<double*>(a->data());
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    // Compute strides for iteration
+    int64_t outerSize = 1;
+    for (int i = 0; i < axis; i++) {
+        outerSize *= shapeA[i];
+    }
+    int64_t axisSize = shapeA[axis];
+    int64_t innerSize = 1;
+    for (int i = axis + 1; i < ndim; i++) {
+        innerSize *= shapeA[i];
+    }
+
+    // Create indices and sort them
+    std::vector<int64_t> indices(axisSize);
+    std::vector<double> values(axisSize);
+
+    for (int64_t outer = 0; outer < outerSize; outer++) {
+        for (int64_t inner = 0; inner < innerSize; inner++) {
+            // Initialize indices and gather values
+            for (int64_t i = 0; i < axisSize; i++) {
+                indices[i] = i;
+                values[i] = dataA[outer * axisSize * innerSize + i * innerSize + inner];
+            }
+
+            // Sort indices by values (stable sort preserves order for equal elements)
+            std::stable_sort(indices.begin(), indices.end(), [&values](int64_t i1, int64_t i2) {
+                return values[i1] < values[i2];
+            });
+
+            // Write sorted indices to result
+            for (int64_t i = 0; i < axisSize; i++) {
+                dataC[outer * axisSize * innerSize + i * innerSize + inner] = static_cast<double>(indices[i]);
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Find unique elements of an array (sorted)
+ * unique(a)
+ */
+Napi::Value Unique(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    const double* dataA = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    if (size == 0) {
+        // Empty array returns empty array
+        Napi::Object result = createNDArray(env, {0});
+        return result;
+    }
+
+    // Copy and sort
+    std::vector<double> sorted(dataA, dataA + size);
+    std::sort(sorted.begin(), sorted.end());
+
+    // Find unique elements
+    std::vector<double> uniqueVals;
+    uniqueVals.reserve(size);
+    uniqueVals.push_back(sorted[0]);
+
+    for (int64_t i = 1; i < size; i++) {
+        if (sorted[i] != sorted[i - 1]) {
+            uniqueVals.push_back(sorted[i]);
+        }
+    }
+
+    // Create result array
+    Napi::Object result = createNDArray(env, {static_cast<int64_t>(uniqueVals.size())});
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataC = static_cast<double*>(resultArr->data());
+    std::copy(uniqueVals.begin(), uniqueVals.end(), dataC);
+
+    return result;
+}
+
+/**
+ * Find indices where elements should be inserted to maintain order
+ * searchsorted(a, v, side='left')
+ */
+Napi::Value Searchsorted(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* v = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    std::string side = "left";
+    if (info.Length() >= 3 && !info[2].IsUndefined()) {
+        side = info[2].As<Napi::String>().Utf8Value();
+    }
+
+    const double* dataA = static_cast<double*>(a->data());
+    const double* dataV = static_cast<double*>(v->data());
+    int64_t sizeA = a->size();
+    int64_t sizeV = v->size();
+
+    Napi::Object result = createNDArray(env, v->shape());
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    bool useLeft = (side == "left");
+
+    for (int64_t i = 0; i < sizeV; i++) {
+        double val = dataV[i];
+        int64_t lo = 0, hi = sizeA;
+
+        if (useLeft) {
+            // Find leftmost position
+            while (lo < hi) {
+                int64_t mid = (lo + hi) / 2;
+                if (dataA[mid] < val) {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
+                }
+            }
+        } else {
+            // Find rightmost position
+            while (lo < hi) {
+                int64_t mid = (lo + hi) / 2;
+                if (dataA[mid] <= val) {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
+                }
+            }
+        }
+        dataC[i] = static_cast<double>(lo);
+    }
+
+    return result;
+}
+
+/**
+ * Construct an array by repeating a the number of times given by reps
+ * tile(a, reps)
+ */
+Napi::Value Tile(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    // Parse reps - can be a number or array
+    std::vector<int64_t> reps;
+    if (info[1].IsNumber()) {
+        reps.push_back(info[1].As<Napi::Number>().Int64Value());
+    } else if (info[1].IsArray()) {
+        Napi::Array repsArr = info[1].As<Napi::Array>();
+        for (uint32_t i = 0; i < repsArr.Length(); i++) {
+            reps.push_back(repsArr.Get(i).As<Napi::Number>().Int64Value());
+        }
+    }
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    int ndimA = static_cast<int>(shapeA.size());
+    int ndimReps = static_cast<int>(reps.size());
+
+    // Pad shapes to match dimensions
+    int ndim = std::max(ndimA, ndimReps);
+    std::vector<int64_t> paddedShapeA(ndim, 1);
+    std::vector<int64_t> paddedReps(ndim, 1);
+
+    for (int i = 0; i < ndimA; i++) {
+        paddedShapeA[ndim - ndimA + i] = shapeA[i];
+    }
+    for (int i = 0; i < ndimReps; i++) {
+        paddedReps[ndim - ndimReps + i] = reps[i];
+    }
+
+    // Compute result shape
+    std::vector<int64_t> resultShape(ndim);
+    for (int i = 0; i < ndim; i++) {
+        resultShape[i] = paddedShapeA[i] * paddedReps[i];
+    }
+
+    Napi::Object result = createNDArray(env, resultShape);
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    const double* dataA = static_cast<double*>(a->data());
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    // Compute strides for result
+    std::vector<int64_t> resultStrides(ndim);
+    std::vector<int64_t> inputStrides(ndim);
+    int64_t stride = 1;
+    for (int i = ndim - 1; i >= 0; i--) {
+        resultStrides[i] = stride;
+        stride *= resultShape[i];
+    }
+    stride = 1;
+    for (int i = ndim - 1; i >= 0; i--) {
+        inputStrides[i] = stride;
+        stride *= paddedShapeA[i];
+    }
+
+    // Fill result by tiling
+    int64_t totalSize = resultArr->size();
+    for (int64_t idx = 0; idx < totalSize; idx++) {
+        // Convert flat index to multi-index in result
+        int64_t remaining = idx;
+        int64_t srcIdx = 0;
+        for (int d = 0; d < ndim; d++) {
+            int64_t coord = remaining / resultStrides[d];
+            remaining = remaining % resultStrides[d];
+            // Map to source coordinate using modulo
+            int64_t srcCoord = coord % paddedShapeA[d];
+            srcIdx += srcCoord * inputStrides[d];
+        }
+        dataC[idx] = dataA[srcIdx];
+    }
+
+    return result;
+}
+
+/**
+ * Repeat elements of an array
+ * repeat(a, repeats, axis?)
+ */
+Napi::Value Repeat(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    int64_t repeats = info[1].As<Napi::Number>().Int64Value();
+
+    const double* dataA = static_cast<double*>(a->data());
+    const std::vector<int64_t>& shapeA = a->shape();
+    int64_t sizeA = a->size();
+
+    // If no axis, flatten and repeat each element
+    if (info.Length() < 3 || info[2].IsUndefined()) {
+        std::vector<int64_t> resultShape = {sizeA * repeats};
+        Napi::Object result = createNDArray(env, resultShape);
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* dataC = static_cast<double*>(resultArr->data());
+
+        for (int64_t i = 0; i < sizeA; i++) {
+            for (int64_t r = 0; r < repeats; r++) {
+                dataC[i * repeats + r] = dataA[i];
+            }
+        }
+        return result;
+    }
+
+    // With axis
+    int axis = info[2].As<Napi::Number>().Int32Value();
+    int ndim = static_cast<int>(shapeA.size());
+    if (axis < 0) axis += ndim;
+
+    std::vector<int64_t> resultShape = shapeA;
+    resultShape[axis] *= repeats;
+
+    Napi::Object result = createNDArray(env, resultShape);
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    int64_t outerSize = 1;
+    for (int i = 0; i < axis; i++) outerSize *= shapeA[i];
+    int64_t axisSize = shapeA[axis];
+    int64_t innerSize = 1;
+    for (int i = axis + 1; i < ndim; i++) innerSize *= shapeA[i];
+
+    for (int64_t outer = 0; outer < outerSize; outer++) {
+        for (int64_t i = 0; i < axisSize; i++) {
+            for (int64_t r = 0; r < repeats; r++) {
+                for (int64_t inner = 0; inner < innerSize; inner++) {
+                    int64_t srcIdx = outer * axisSize * innerSize + i * innerSize + inner;
+                    int64_t dstIdx = outer * (axisSize * repeats) * innerSize + (i * repeats + r) * innerSize + inner;
+                    dataC[dstIdx] = dataA[srcIdx];
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Reverse the order of elements along the given axis
+ * flip(a, axis?)
+ */
+Napi::Value Flip(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    int ndim = static_cast<int>(shapeA.size());
+    const double* dataA = static_cast<double*>(a->data());
+
+    // If no axis specified, flip all axes
+    std::vector<int> axes;
+    if (info.Length() < 2 || info[1].IsUndefined()) {
+        for (int i = 0; i < ndim; i++) axes.push_back(i);
+    } else if (info[1].IsNumber()) {
+        int axis = info[1].As<Napi::Number>().Int32Value();
+        if (axis < 0) axis += ndim;
+        axes.push_back(axis);
+    } else if (info[1].IsArray()) {
+        Napi::Array axesArr = info[1].As<Napi::Array>();
+        for (uint32_t i = 0; i < axesArr.Length(); i++) {
+            int axis = axesArr.Get(i).As<Napi::Number>().Int32Value();
+            if (axis < 0) axis += ndim;
+            axes.push_back(axis);
+        }
+    }
+
+    Napi::Object result = createNDArray(env, shapeA);
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    // Compute strides
+    std::vector<int64_t> strides(ndim);
+    int64_t stride = 1;
+    for (int i = ndim - 1; i >= 0; i--) {
+        strides[i] = stride;
+        stride *= shapeA[i];
+    }
+
+    int64_t totalSize = a->size();
+    for (int64_t idx = 0; idx < totalSize; idx++) {
+        // Convert to multi-index
+        int64_t remaining = idx;
+        std::vector<int64_t> coords(ndim);
+        for (int d = 0; d < ndim; d++) {
+            coords[d] = remaining / strides[d];
+            remaining = remaining % strides[d];
+        }
+
+        // Flip specified axes
+        for (int axis : axes) {
+            coords[axis] = shapeA[axis] - 1 - coords[axis];
+        }
+
+        // Convert back to flat index
+        int64_t srcIdx = 0;
+        for (int d = 0; d < ndim; d++) {
+            srcIdx += coords[d] * strides[d];
+        }
+
+        dataC[idx] = dataA[srcIdx];
+    }
+
+    return result;
+}
+
+/**
+ * Rotate an array by 90 degrees in the plane specified by axes
+ * rot90(a, k=1, axes=(0,1))
+ */
+Napi::Value Rot90(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    int k = 1;
+    if (info.Length() >= 2 && !info[1].IsUndefined()) {
+        k = info[1].As<Napi::Number>().Int32Value();
+    }
+
+    int axis0 = 0, axis1 = 1;
+    if (info.Length() >= 3 && !info[2].IsUndefined()) {
+        Napi::Array axesArr = info[2].As<Napi::Array>();
+        axis0 = axesArr.Get(uint32_t(0)).As<Napi::Number>().Int32Value();
+        axis1 = axesArr.Get(uint32_t(1)).As<Napi::Number>().Int32Value();
+    }
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    int ndim = static_cast<int>(shapeA.size());
+
+    if (axis0 < 0) axis0 += ndim;
+    if (axis1 < 0) axis1 += ndim;
+
+    // Normalize k to 0-3
+    k = ((k % 4) + 4) % 4;
+
+    if (k == 0) {
+        // No rotation - just copy
+        Napi::Object result = createNDArray(env, shapeA);
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        std::copy(static_cast<double*>(a->data()),
+                  static_cast<double*>(a->data()) + a->size(),
+                  static_cast<double*>(resultArr->data()));
+        return result;
+    }
+
+    // Determine result shape
+    std::vector<int64_t> resultShape = shapeA;
+    if (k == 1 || k == 3) {
+        // Swap dimensions for 90 or 270 degree rotation
+        std::swap(resultShape[axis0], resultShape[axis1]);
+    }
+
+    Napi::Object result = createNDArray(env, resultShape);
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    const double* dataA = static_cast<double*>(a->data());
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    // Compute strides
+    std::vector<int64_t> srcStrides(ndim), dstStrides(ndim);
+    int64_t stride = 1;
+    for (int i = ndim - 1; i >= 0; i--) {
+        srcStrides[i] = stride;
+        stride *= shapeA[i];
+    }
+    stride = 1;
+    for (int i = ndim - 1; i >= 0; i--) {
+        dstStrides[i] = stride;
+        stride *= resultShape[i];
+    }
+
+    int64_t totalSize = resultArr->size();
+    for (int64_t dstIdx = 0; dstIdx < totalSize; dstIdx++) {
+        // Convert dst index to coords
+        int64_t remaining = dstIdx;
+        std::vector<int64_t> dstCoords(ndim);
+        for (int d = 0; d < ndim; d++) {
+            dstCoords[d] = remaining / dstStrides[d];
+            remaining = remaining % dstStrides[d];
+        }
+
+        // Apply rotation transformation to get src coords
+        std::vector<int64_t> srcCoords = dstCoords;
+        int64_t d0 = dstCoords[axis0];
+        int64_t d1 = dstCoords[axis1];
+
+        if (k == 1) {
+            // 90 degrees CCW: (i,j) -> (j, n-1-i)
+            srcCoords[axis0] = d1;
+            srcCoords[axis1] = resultShape[axis0] - 1 - d0;
+        } else if (k == 2) {
+            // 180 degrees: (i,j) -> (n-1-i, m-1-j)
+            srcCoords[axis0] = shapeA[axis0] - 1 - d0;
+            srcCoords[axis1] = shapeA[axis1] - 1 - d1;
+        } else if (k == 3) {
+            // 270 degrees CCW (90 CW): (i,j) -> (m-1-j, i)
+            srcCoords[axis0] = resultShape[axis1] - 1 - d1;
+            srcCoords[axis1] = d0;
+        }
+
+        // Convert src coords to flat index
+        int64_t srcIdx = 0;
+        for (int d = 0; d < ndim; d++) {
+            srcIdx += srcCoords[d] * srcStrides[d];
+        }
+
+        dataC[dstIdx] = dataA[srcIdx];
+    }
+
+    return result;
+}
+
+/**
+ * Split an array into multiple sub-arrays
+ * split(a, indices_or_sections, axis=0)
+ */
+Napi::Value Split(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    int axis = 0;
+    if (info.Length() >= 3 && !info[2].IsUndefined()) {
+        axis = info[2].As<Napi::Number>().Int32Value();
+    }
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    int ndim = static_cast<int>(shapeA.size());
+    if (axis < 0) axis += ndim;
+
+    const double* dataA = static_cast<double*>(a->data());
+
+    // Parse indices_or_sections
+    std::vector<int64_t> splitIndices;
+    if (info[1].IsNumber()) {
+        // Split into N equal parts
+        int64_t n = info[1].As<Napi::Number>().Int64Value();
+        int64_t axisSize = shapeA[axis];
+        for (int64_t i = 1; i < n; i++) {
+            splitIndices.push_back((i * axisSize) / n);
+        }
+    } else if (info[1].IsArray()) {
+        // Split at specific indices
+        Napi::Array indicesArr = info[1].As<Napi::Array>();
+        for (uint32_t i = 0; i < indicesArr.Length(); i++) {
+            splitIndices.push_back(indicesArr.Get(i).As<Napi::Number>().Int64Value());
+        }
+    }
+
+    // Add 0 at start and axisSize at end for easier iteration
+    std::vector<int64_t> boundaries;
+    boundaries.push_back(0);
+    for (int64_t idx : splitIndices) {
+        boundaries.push_back(idx);
+    }
+    boundaries.push_back(shapeA[axis]);
+
+    // Create result array of sub-arrays
+    Napi::Array resultArray = Napi::Array::New(env, boundaries.size() - 1);
+
+    int64_t outerSize = 1;
+    for (int i = 0; i < axis; i++) outerSize *= shapeA[i];
+    int64_t innerSize = 1;
+    for (int i = axis + 1; i < ndim; i++) innerSize *= shapeA[i];
+    int64_t axisSize = shapeA[axis];
+
+    for (size_t s = 0; s < boundaries.size() - 1; s++) {
+        int64_t start = boundaries[s];
+        int64_t end = boundaries[s + 1];
+        int64_t sliceSize = end - start;
+
+        // Create shape for this slice
+        std::vector<int64_t> sliceShape = shapeA;
+        sliceShape[axis] = sliceSize;
+
+        Napi::Object slice = createNDArray(env, sliceShape);
+        NativeNDArray* sliceArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(slice);
+        double* sliceData = static_cast<double*>(sliceArr->data());
+
+        // Copy data
+        for (int64_t outer = 0; outer < outerSize; outer++) {
+            for (int64_t i = 0; i < sliceSize; i++) {
+                for (int64_t inner = 0; inner < innerSize; inner++) {
+                    int64_t srcIdx = outer * axisSize * innerSize + (start + i) * innerSize + inner;
+                    int64_t dstIdx = outer * sliceSize * innerSize + i * innerSize + inner;
+                    sliceData[dstIdx] = dataA[srcIdx];
+                }
+            }
+        }
+
+        resultArray.Set(uint32_t(s), slice);
+    }
+
+    return resultArray;
+}
+
+/**
+ * Return the indices of non-zero elements
+ * nonzero(a)
+ */
+Napi::Value Nonzero(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    const double* dataA = static_cast<double*>(a->data());
+    const std::vector<int64_t>& shapeA = a->shape();
+    int ndim = static_cast<int>(shapeA.size());
+    int64_t size = a->size();
+
+    // First pass: count non-zero elements
+    int64_t count = 0;
+    for (int64_t i = 0; i < size; i++) {
+        if (dataA[i] != 0.0) count++;
+    }
+
+    // Compute strides for index conversion
+    std::vector<int64_t> strides(ndim);
+    int64_t stride = 1;
+    for (int i = ndim - 1; i >= 0; i--) {
+        strides[i] = stride;
+        stride *= shapeA[i];
+    }
+
+    // Create result: tuple of arrays, one per dimension
+    Napi::Array resultTuple = Napi::Array::New(env, ndim);
+
+    for (int d = 0; d < ndim; d++) {
+        Napi::Object indices = createNDArray(env, {count});
+        NativeNDArray* indicesArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(indices);
+        double* indicesData = static_cast<double*>(indicesArr->data());
+
+        int64_t idx = 0;
+        for (int64_t i = 0; i < size; i++) {
+            if (dataA[i] != 0.0) {
+                // Convert flat index to coordinate for dimension d
+                int64_t coord = (i / strides[d]) % shapeA[d];
+                indicesData[idx++] = static_cast<double>(coord);
+            }
+        }
+
+        resultTuple.Set(uint32_t(d), indices);
+    }
+
+    return resultTuple;
+}
+
+/**
+ * Element-wise sign function
+ * sign(a) returns -1, 0, or 1
+ */
+Napi::Value Sign(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    Napi::Object result = createNDArray(env, shapeA);
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+
+    const double* dataA = static_cast<double*>(a->data());
+    double* dataC = static_cast<double*>(resultArr->data());
+    int64_t size = a->size();
+
+    for (int64_t i = 0; i < size; i++) {
+        if (dataA[i] > 0) {
+            dataC[i] = 1.0;
+        } else if (dataA[i] < 0) {
+            dataC[i] = -1.0;
+        } else {
+            dataC[i] = 0.0;
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Element-wise modulo operation
+ * mod(a, b) - result has same sign as divisor (Python/NumPy behavior)
+ */
+Napi::Value Mod(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    const double* dataA = static_cast<double*>(a->data());
+    int64_t size = a->size();
+
+    // Check if b is scalar or array
+    if (info[1].IsNumber()) {
+        double b = info[1].As<Napi::Number>().DoubleValue();
+        Napi::Object result = createNDArray(env, shapeA);
+        NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+        double* dataC = static_cast<double*>(resultArr->data());
+
+        for (int64_t i = 0; i < size; i++) {
+            double r = std::fmod(dataA[i], b);
+            // Adjust for Python/NumPy behavior (result has same sign as divisor)
+            if (r != 0 && ((r < 0) != (b < 0))) {
+                r += b;
+            }
+            dataC[i] = r;
+        }
+        return result;
+    }
+
+    // Array case
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+    const double* dataB = static_cast<double*>(b->data());
+
+    Napi::Object result = createNDArray(env, shapeA);
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataC = static_cast<double*>(resultArr->data());
+
+    for (int64_t i = 0; i < size; i++) {
+        double r = std::fmod(dataA[i], dataB[i]);
+        if (r != 0 && ((r < 0) != (dataB[i] < 0))) {
+            r += dataB[i];
+        }
+        dataC[i] = r;
+    }
+
+    return result;
+}
+
+/**
+ * Element-wise check if two arrays are close within tolerance
+ * isclose(a, b, rtol=1e-5, atol=1e-8)
+ */
+Napi::Value Isclose(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    double rtol = 1e-5;
+    double atol = 1e-8;
+    if (info.Length() >= 3 && !info[2].IsUndefined()) {
+        rtol = info[2].As<Napi::Number>().DoubleValue();
+    }
+    if (info.Length() >= 4 && !info[3].IsUndefined()) {
+        atol = info[3].As<Napi::Number>().DoubleValue();
+    }
+
+    const std::vector<int64_t>& shapeA = a->shape();
+    const double* dataA = static_cast<double*>(a->data());
+    const double* dataB = static_cast<double*>(b->data());
+    int64_t size = a->size();
+
+    // Create bool result array (stored as float64 with 0/1)
+    Napi::Array jsShape = Napi::Array::New(env, shapeA.size());
+    for (size_t i = 0; i < shapeA.size(); i++) {
+        jsShape.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shapeA[i])));
+    }
+    Napi::Object result = NativeNDArray::constructor.New({
+        jsShape, Napi::String::New(env, "bool"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    uint8_t* dataC = static_cast<uint8_t*>(resultArr->data());
+
+    for (int64_t i = 0; i < size; i++) {
+        double diff = std::abs(dataA[i] - dataB[i]);
+        bool close = diff <= atol + rtol * std::abs(dataB[i]);
+        dataC[i] = close ? 1 : 0;
+    }
+
+    return result;
+}
+
+/**
+ * Check if all elements of two arrays are close within tolerance
+ * allclose(a, b, rtol=1e-5, atol=1e-8)
+ */
+Napi::Value Allclose(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    NativeNDArray* a = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* b = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+
+    double rtol = 1e-5;
+    double atol = 1e-8;
+    if (info.Length() >= 3 && !info[2].IsUndefined()) {
+        rtol = info[2].As<Napi::Number>().DoubleValue();
+    }
+    if (info.Length() >= 4 && !info[3].IsUndefined()) {
+        atol = info[3].As<Napi::Number>().DoubleValue();
+    }
+
+    const double* dataA = static_cast<double*>(a->data());
+    const double* dataB = static_cast<double*>(b->data());
+    int64_t size = a->size();
+
+    for (int64_t i = 0; i < size; i++) {
+        double diff = std::abs(dataA[i] - dataB[i]);
+        if (diff > atol + rtol * std::abs(dataB[i])) {
+            return Napi::Boolean::New(env, false);
+        }
+    }
+
+    return Napi::Boolean::New(env, true);
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     Napi::Object math = Napi::Object::New(env);
 
@@ -2940,10 +5039,38 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     math.Set("cos", Napi::Function::New(env, Cos));
     math.Set("tan", Napi::Function::New(env, Tan));
     math.Set("abs", Napi::Function::New(env, Abs));
+    math.Set("round", Napi::Function::New(env, Round));
+    math.Set("floor", Napi::Function::New(env, Floor));
+    math.Set("ceil", Napi::Function::New(env, Ceil));
     math.Set("sum", Napi::Function::New(env, Sum));
     math.Set("prod", Napi::Function::New(env, Prod));
     math.Set("max", Napi::Function::New(env, Max));
     math.Set("min", Napi::Function::New(env, Min));
+    math.Set("argmax", Napi::Function::New(env, Argmax));
+    math.Set("argmin", Napi::Function::New(env, Argmin));
+    math.Set("cumsum", Napi::Function::New(env, Cumsum));
+    math.Set("cumprod", Napi::Function::New(env, Cumprod));
+    math.Set("concatenate", Napi::Function::New(env, Concatenate));
+    math.Set("stack", Napi::Function::New(env, Stack));
+    math.Set("diff", Napi::Function::New(env, Diff));
+    math.Set("sort", Napi::Function::New(env, Sort));
+    math.Set("argsort", Napi::Function::New(env, Argsort));
+    math.Set("unique", Napi::Function::New(env, Unique));
+    math.Set("searchsorted", Napi::Function::New(env, Searchsorted));
+    math.Set("tile", Napi::Function::New(env, Tile));
+    math.Set("repeat", Napi::Function::New(env, Repeat));
+    math.Set("flip", Napi::Function::New(env, Flip));
+    math.Set("rot90", Napi::Function::New(env, Rot90));
+    math.Set("split", Napi::Function::New(env, Split));
+    math.Set("nonzero", Napi::Function::New(env, Nonzero));
+    math.Set("sign", Napi::Function::New(env, Sign));
+    math.Set("mod", Napi::Function::New(env, Mod));
+    math.Set("isclose", Napi::Function::New(env, Isclose));
+    math.Set("allclose", Napi::Function::New(env, Allclose));
+    math.Set("clip", Napi::Function::New(env, Clip));
+    math.Set("where", Napi::Function::New(env, Where));
+    math.Set("squeeze", Napi::Function::New(env, Squeeze));
+    math.Set("expand_dims", Napi::Function::New(env, ExpandDims));
     math.Set("mean", Napi::Function::New(env, Mean));
     math.Set("std", Napi::Function::New(env, Std));
     math.Set("var", Napi::Function::New(env, Var));

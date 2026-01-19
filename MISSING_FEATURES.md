@@ -1,139 +1,109 @@
 # NumPy Feature Roadmap
 
-Priorisierte Liste fehlender NumPy-Funktionen für numpy-node.
+Prioritized list of missing NumPy functions for numpy-node.
 
-## Bereits implementiert ✅
+## Already Implemented
 
-Diese Funktionen sind bereits verfügbar:
+These functions are already available:
 
 - **Array Creation:** `array`, `zeros`, `ones`, `full`, `arange`, `linspace`, `eye`, `identity`, `empty`, `zerosLike`, `onesLike`, `emptyLike`
-- **Arithmetic:** `add`, `subtract`, `multiply`, `divide`, `power` (+ in-place Varianten)
-- **Unary Math:** `sqrt`, `exp`, `log`, `sin`, `cos`, `tan`, `abs`, `negative`
-- **Reductions:** `sum`, `prod`, `mean`, `std`, `variance`, `median`, `min`, `max`
-- **Comparison:** `equal`, `not_equal`, `less`, `less_equal`, `greater`, `greater_equal`
+- **Arithmetic:** `add`, `subtract`, `multiply`, `divide`, `power` (+ in-place variants)
+- **Unary Math:** `sqrt`, `exp`, `log`, `sin`, `cos`, `tan`, `abs`, `negative`, `round`, `floor`, `ceil`, `sign`, `mod`
+- **Reductions:** `sum`, `prod`, `mean`, `std`, `variance`, `median`, `min`, `max`, `argmin`, `argmax`, `cumsum`, `cumprod`
+- **Comparison:** `equal`, `not_equal`, `less`, `less_equal`, `greater`, `greater_equal`, `isclose`, `allclose`
 - **Logical:** `logical_and`, `logical_or`, `logical_xor`, `logical_not`
 - **Boolean Reductions:** `any`, `all`
 - **Linear Algebra:** `matmul`, `dot`, `inv`, `det`, `solve`, `eig`, `eigvals`, `svd`, `qr`, `cholesky`, `norm`, `matrix_rank`, `trace`, `cond`, `lstsq`
+- **Array Manipulation:** `clip`, `where`, `squeeze`, `expand_dims`, `concatenate`, `stack`, `vstack`, `hstack`, `tile`, `repeat`, `flip`, `rot90`, `split`, `nonzero`
+- **Sorting/Searching:** `diff`, `sort`, `argsort`, `unique`, `searchsorted`
 - **Advanced:** `outer`, `kron`, `percentile`, `corrcoef`, `zscore`
 - **Random:** `random.random`, `random.uniform`, `random.normal`, `random.randint`, `random.seed`
 
 ---
 
-## Tier 1 - Essentiell (höchste Priorität)
+## Tier 1 - Essential (Highest Priority)
 
-Diese Funktionen werden in fast jedem NumPy-Projekt verwendet.
+These functions are used in almost every NumPy project.
 
-| Funktion                     | Beschreibung           | Anwendung                         | Komplexität |
-| ---------------------------- | ---------------------- | --------------------------------- | ----------- |
-| `argmin(a, axis?)`           | Index des Minimums     | Klassifikation, Nearest Neighbor  | Einfach     |
-| `argmax(a, axis?)`           | Index des Maximums     | Predictions, Peak Detection       | Einfach     |
-| `clip(a, min, max)`          | Werte begrenzen        | Gradient Clipping, Normalisierung | Einfach     |
-| `where(cond, x, y)`          | Bedingte Auswahl       | Masking, Thresholding             | Mittel      |
-| `concatenate(arrays, axis?)` | Arrays verbinden       | Batching, Sequenzen               | Mittel      |
-| `stack(arrays, axis?)`       | Neue Achse + verbinden | Batch-Building                    | Mittel      |
+_All Tier 1 functions implemented: `argmin`, `argmax`, `clip`, `where`, `concatenate`, `stack`_
 
-## Tier 2 - Sehr häufig
+## Tier 2 - Very Common
 
-Regelmäßig in Data Science und ML verwendet.
+Regularly used in Data Science and ML.
 
-| Funktion             | Beschreibung        | Anwendung               | Komplexität |
-| -------------------- | ------------------- | ----------------------- | ----------- |
-| `cumsum(a, axis?)`   | Kumulative Summe    | Running Totals, CDF     | Einfach     |
-| `cumprod(a, axis?)`  | Kumulatives Produkt | Wahrscheinlichkeiten    | Einfach     |
-| `diff(a, n?, axis?)` | Differenzen         | Zeitreihen, Ableitungen | Einfach     |
-| `sort(a, axis?)`     | Array sortieren     | Ranking, Median         | Mittel      |
-| `argsort(a, axis?)`  | Sortier-Indizes     | Top-K, Ranking          | Mittel      |
-| `unique(a)`          | Eindeutige Werte    | Kategorien, Labels      | Mittel      |
+_All Tier 2 functions implemented: `cumsum`, `cumprod`, `diff`, `sort`, `argsort`, `unique`_
 
-## Tier 3 - Häufig
+## Tier 3 - Common
 
-Nützlich für viele Anwendungsfälle.
+Useful for many use cases.
 
-| Funktion                 | Beschreibung          | Anwendung                    | Komplexität |
-| ------------------------ | --------------------- | ---------------------------- | ----------- |
-| `round(a, decimals?)`    | Runden                | Darstellung, Diskretisierung | Einfach     |
-| `floor(a)`               | Abrunden              | Integer-Konvertierung        | Einfach     |
-| `ceil(a)`                | Aufrunden             | Integer-Konvertierung        | Einfach     |
-| `searchsorted(a, v)`     | Einfügeposition       | Binning, Histogramme         | Mittel      |
-| `tile(a, reps)`          | Array wiederholen     | Data Augmentation            | Mittel      |
-| `repeat(a, reps, axis?)` | Elemente wiederholen  | Upsampling                   | Mittel      |
-| `squeeze(a, axis?)`      | Einser-Dims entfernen | Shape Cleanup                | Einfach     |
-| `expand_dims(a, axis)`   | Dimension hinzufügen  | Broadcasting Prep            | Einfach     |
-| `vstack(arrays)`         | Vertikal stapeln      | Alias für concat axis=0      | Einfach     |
-| `hstack(arrays)`         | Horizontal stapeln    | Alias für concat axis=1      | Einfach     |
+_All Tier 3 functions implemented: `searchsorted`, `tile`, `repeat`, `round`, `floor`, `ceil`, `squeeze`, `expand_dims`, `vstack`, `hstack`_
 
-## Tier 4 - Nützlich
+## Tier 4 - Useful
 
-Weniger häufig, aber wichtig für bestimmte Domains.
+Less common but important for specific domains.
 
-| Funktion                       | Beschreibung             | Anwendung             | Komplexität |
-| ------------------------------ | ------------------------ | --------------------- | ----------- |
-| `flip(a, axis?)`               | Array umkehren           | Bildverarbeitung      | Einfach     |
-| `rot90(a, k?, axes?)`          | 90° rotieren             | Bildverarbeitung      | Mittel      |
-| `sign(a)`                      | Vorzeichen               | Gradient Sign         | Einfach     |
-| `mod(a, b)`                    | Modulo                   | Periodische Ops       | Einfach     |
-| `allclose(a, b, rtol?, atol?)` | Approximative Gleichheit | Testing               | Einfach     |
-| `isclose(a, b, rtol?, atol?)`  | Element-weise Nähe       | Numerische Vergleiche | Einfach     |
-| `nonzero(a)`                   | Indizes != 0             | Sparse Ops            | Mittel      |
-| `split(a, indices, axis?)`     | Array teilen             | Batch Splitting       | Mittel      |
+_All Tier 4 functions implemented: `flip`, `rot90`, `sign`, `mod`, `allclose`, `isclose`, `nonzero`, `split`_
 
-## Tier 5 - Fortgeschritten
+## Tier 5 - Advanced
 
-Komplex zu implementieren, aber eröffnet neue Domains.
+Complex to implement but enables new domains.
 
-| Funktion                        | Beschreibung           | Anwendung                    | Komplexität |
-| ------------------------------- | ---------------------- | ---------------------------- | ----------- |
-| `fft(a)`                        | Fast Fourier Transform | Audio, Signal Processing     | Hoch        |
-| `ifft(a)`                       | Inverse FFT            | Frequenz → Zeit              | Hoch        |
-| `rfft(a)`                       | Real FFT               | Effizienter für reelle Daten | Hoch        |
-| `einsum(subscripts, *operands)` | Einstein Summation     | Flexible Tensor Ops          | Hoch        |
+| Function                        | Description            | Use Case                 | Complexity |
+| ------------------------------- | ---------------------- | ------------------------ | ---------- |
+| `fft(a)`                        | Fast Fourier Transform | Audio, Signal Processing | High       |
+| `ifft(a)`                       | Inverse FFT            | Frequency to Time        | High       |
+| `rfft(a)`                       | Real FFT               | More efficient for real  | High       |
+| `einsum(subscripts, *operands)` | Einstein Summation     | Flexible Tensor Ops      | High       |
 
 ---
 
-## Implementierungsplan
+## Implementation Plan
 
-### Phase 1: Nächste Prioritäten (Tier 1)
+### Phase 1: Next Priorities (Tier 1)
 
-1. `argmin`, `argmax` - C++ mit vDSP/BLAS Optimierung
-2. `clip` - C++ mit vDSP_vclipD
-3. `where` - Boolean Indexing (Boolean Arrays sind bereits implementiert ✅)
-4. `concatenate`, `stack`
+1. ~~`argmin`, `argmax` - C++ with vDSP/BLAS optimization~~
+2. ~~`clip` - C++ with vDSP_vclipD~~
+3. ~~`where` - Boolean Indexing~~
+4. ~~`concatenate`, `stack` - Array joining~~
 
-### Phase 2: Kumulative & Sortierung (Tier 2)
+### Phase 2: Cumulative & Sorting (Tier 2)
 
-1. `cumsum`, `cumprod` - sequentiell, evtl. parallel prefix sum
-2. `diff` - einfache Schleife
-3. `sort`, `argsort` - std::sort oder vDSP_vsortD
-4. `unique` - sort + deduplicate
+1. ~~`cumsum`, `cumprod` - sequential, possibly parallel prefix sum~~
+2. ~~`diff` - simple loop~~
+3. ~~`sort`, `argsort` - std::sort~~
+4. ~~`unique` - sort + deduplicate~~
 
 ### Phase 3: Utilities (Tier 3)
 
-1. `round`, `floor`, `ceil` - vDSP oder std::round
-2. `squeeze`, `expand_dims` - reine Shape-Manipulation
-3. `tile`, `repeat` - Memory-Operationen
-4. `searchsorted` - Binary Search
+1. ~~`round`, `floor`, `ceil` - vDSP or std::round~~
+2. ~~`squeeze`, `expand_dims` - pure shape manipulation~~
+3. ~~`tile`, `repeat` - memory operations~~
+4. ~~`searchsorted` - Binary Search~~
 
-### Phase 4: Erweitert (Tier 4 & 5)
+### Phase 4: Extended (Tier 4 & 5)
 
-1. Array-Manipulation: `flip`, `rot90`, `split`
-2. FFT: Accelerate Framework hat vDSP*fft*\*
-3. `einsum`: Komplexer Parser + optimierte Kontraktionen
+1. ~~Array manipulation: `flip`, `rot90`, `split`, `sign`, `mod`, `nonzero`~~
+2. ~~Approximate comparison: `allclose`, `isclose`~~
+3. FFT: Accelerate Framework has vDSP*fft*\*
+4. `einsum`: Complex parser + optimized contractions
 
 ---
 
 ## Coverage Summary
 
-| Kategorie          | Implementiert | Fehlend                             | Coverage |
-| ------------------ | ------------- | ----------------------------------- | -------- |
-| Array Creation     | 12            | 0                                   | 100%     |
-| Arithmetic         | 5             | 0                                   | 100%     |
-| Unary Math         | 8             | 3 (round, floor, ceil)              | 73%      |
-| Reductions         | 8             | 4 (cumsum, cumprod, argmin, argmax) | 67%      |
-| Comparison         | 6             | 2 (isclose, allclose)               | 75%      |
-| Logical            | 4             | 0                                   | 100%     |
-| Boolean Reductions | 2             | 0                                   | 100%     |
-| Linear Algebra     | 15            | 0                                   | 100%     |
-| Array Manipulation | 2             | 12+                                 | ~15%     |
-| **Gesamt (Core)**  | **~62**       | **~25**                             | **~71%** |
+| Category           | Implemented | Missing             | Coverage |
+| ------------------ | ----------- | ------------------- | -------- |
+| Array Creation     | 12          | 0                   | 100%     |
+| Arithmetic         | 5           | 0                   | 100%     |
+| Unary Math         | 13          | 0                   | 100%     |
+| Reductions         | 12          | 0                   | 100%     |
+| Comparison         | 8           | 0                   | 100%     |
+| Logical            | 4           | 0                   | 100%     |
+| Boolean Reductions | 2           | 0                   | 100%     |
+| Linear Algebra     | 15          | 0                   | 100%     |
+| Sorting/Searching  | 5           | 0                   | 100%     |
+| Array Manipulation | 18          | 0                   | 100%     |
+| **Total (Core)**   | **~94**     | **4 (FFT, einsum)** | **~96%** |
 
-_Hinweis: "Core" bezieht sich auf die am häufigsten verwendeten NumPy-Funktionen._
+_Note: "Core" refers to the most commonly used NumPy functions. Only advanced FFT and einsum remain unimplemented._

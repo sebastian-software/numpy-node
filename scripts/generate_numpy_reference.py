@@ -105,6 +105,10 @@ def generate_reference():
         "cos": to_serializable(np.cos(angles)),
         "abs": to_serializable(np.abs([-1, 2, -3, 4])),
         "negative": to_serializable(np.negative([1, -2, 3])),
+        # Rounding functions
+        "round": to_serializable(np.round([-1.7, -0.5, 0.5, 1.3, 2.5])),
+        "floor": to_serializable(np.floor([-1.7, -0.5, 0.5, 1.3, 2.5])),
+        "ceil": to_serializable(np.ceil([-1.7, -0.5, 0.5, 1.3, 2.5])),
     }
 
     # =========================================================================
@@ -124,12 +128,27 @@ def generate_reference():
         "min": to_serializable(np.min(arr)),
         "max": to_serializable(np.max(arr)),
         "median": to_serializable(np.median(arr)),
+        "argmin": to_serializable(np.argmin(arr)),
+        "argmax": to_serializable(np.argmax(arr)),
         "sum_axis0": to_serializable(np.sum(arr2d, axis=0)),
         "sum_axis1": to_serializable(np.sum(arr2d, axis=1)),
         "mean_axis0": to_serializable(np.mean(arr2d, axis=0)),
         "mean_axis1": to_serializable(np.mean(arr2d, axis=1)),
         "min_axis0": to_serializable(np.min(arr2d, axis=0)),
         "max_axis1": to_serializable(np.max(arr2d, axis=1)),
+        "argmin_axis0": to_serializable(np.argmin(arr2d, axis=0)),
+        "argmin_axis1": to_serializable(np.argmin(arr2d, axis=1)),
+        "argmax_axis0": to_serializable(np.argmax(arr2d, axis=0)),
+        "argmax_axis1": to_serializable(np.argmax(arr2d, axis=1)),
+        # Cumulative operations
+        "cumsum_1d": to_serializable(np.cumsum(arr)),
+        "cumsum_2d_flat": to_serializable(np.cumsum(arr2d)),
+        "cumsum_axis0": to_serializable(np.cumsum(arr2d, axis=0)),
+        "cumsum_axis1": to_serializable(np.cumsum(arr2d, axis=1)),
+        "cumprod_1d": to_serializable(np.cumprod(arr)),
+        "cumprod_2d_flat": to_serializable(np.cumprod(arr2d)),
+        "cumprod_axis0": to_serializable(np.cumprod(arr2d, axis=0)),
+        "cumprod_axis1": to_serializable(np.cumprod(arr2d, axis=1)),
     }
 
     # =========================================================================
@@ -169,6 +188,167 @@ def generate_reference():
     a2d = np.array([[1, 0], [1, 1]])
     b1d = np.array([1, 0])
     ref["tests"]["logical"]["broadcast_and"] = to_serializable(np.logical_and(a2d, b1d))
+
+    # =========================================================================
+    # ARRAY MANIPULATION
+    # =========================================================================
+    arr = np.array([-2, 5, 3, -1, 8])
+    arr2d = np.array([[1, 8, 3], [7, 2, 9]])
+
+    ref["tests"]["array_manipulation"] = {
+        "input_1d": to_serializable(arr),
+        "input_2d": to_serializable(arr2d),
+        # clip
+        "clip_basic": to_serializable(np.clip(arr, 0, 5)),
+        "clip_2d": to_serializable(np.clip(arr2d, 2, 7)),
+        # where - same shape
+        "where_basic": to_serializable(np.where(
+            np.array([True, False, True, False, True]),
+            np.array([1, 2, 3, 4, 5]),
+            np.array([10, 20, 30, 40, 50])
+        )),
+        # where - with comparison
+        "where_comparison": to_serializable(np.where(
+            arr > 0,
+            arr,
+            np.zeros(5)
+        )),
+        # where - broadcasting scalar-like
+        "where_broadcast": to_serializable(np.where(
+            np.array([[True, False], [False, True]]),
+            np.array([[1, 2], [3, 4]]),
+            np.array([10, 20])  # broadcasts along axis 0
+        )),
+        # squeeze
+        "squeeze_all": to_serializable(np.squeeze(np.array([[[1, 2, 3]]]))),  # (1, 1, 3) -> (3,)
+        "squeeze_axis": to_serializable(np.squeeze(np.array([[1], [2], [3]]), axis=1)),  # (3, 1) -> (3,)
+        # expand_dims
+        "expand_dims_0": to_serializable(np.expand_dims(np.array([1, 2, 3]), axis=0)),  # (3,) -> (1, 3)
+        "expand_dims_1": to_serializable(np.expand_dims(np.array([1, 2, 3]), axis=1)),  # (3,) -> (3, 1)
+        "expand_dims_neg": to_serializable(np.expand_dims(np.array([1, 2, 3]), axis=-1)),  # (3,) -> (3, 1)
+    }
+
+    # =========================================================================
+    # ARRAY JOINING
+    # =========================================================================
+    a1d_1 = np.array([1, 2, 3])
+    a1d_2 = np.array([4, 5, 6])
+    a2d_1 = np.array([[1, 2], [3, 4]])
+    a2d_2 = np.array([[5, 6], [7, 8]])
+
+    ref["tests"]["array_joining"] = {
+        "input_1d_1": to_serializable(a1d_1),
+        "input_1d_2": to_serializable(a1d_2),
+        "input_2d_1": to_serializable(a2d_1),
+        "input_2d_2": to_serializable(a2d_2),
+        # concatenate
+        "concat_1d": to_serializable(np.concatenate([a1d_1, a1d_2])),
+        "concat_2d_axis0": to_serializable(np.concatenate([a2d_1, a2d_2], axis=0)),
+        "concat_2d_axis1": to_serializable(np.concatenate([a2d_1, a2d_2], axis=1)),
+        # stack
+        "stack_1d_axis0": to_serializable(np.stack([a1d_1, a1d_2], axis=0)),
+        "stack_1d_axis1": to_serializable(np.stack([a1d_1, a1d_2], axis=1)),
+        "stack_2d_axis0": to_serializable(np.stack([a2d_1, a2d_2], axis=0)),
+        "stack_2d_axis1": to_serializable(np.stack([a2d_1, a2d_2], axis=1)),
+        # vstack
+        "vstack_1d": to_serializable(np.vstack([a1d_1, a1d_2])),
+        "vstack_2d": to_serializable(np.vstack([a2d_1, a2d_2])),
+        # hstack
+        "hstack_1d": to_serializable(np.hstack([a1d_1, a1d_2])),
+        "hstack_2d": to_serializable(np.hstack([a2d_1, a2d_2])),
+    }
+
+    # =========================================================================
+    # SORTING AND SEARCHING
+    # =========================================================================
+    sort_arr = np.array([3, 1, 4, 1, 5, 9, 2, 6])
+    sort_2d = np.array([[3, 1, 2], [6, 4, 5]])
+    diff_arr = np.array([1, 3, 6, 10, 15])
+    unique_arr = np.array([3, 1, 2, 1, 3, 2, 4, 1])
+
+    ref["tests"]["sorting_searching"] = {
+        "input_1d": to_serializable(sort_arr),
+        "input_2d": to_serializable(sort_2d),
+        "diff_input": to_serializable(diff_arr),
+        "unique_input": to_serializable(unique_arr),
+        # diff
+        "diff_1d": to_serializable(np.diff(diff_arr)),
+        "diff_1d_n2": to_serializable(np.diff(diff_arr, n=2)),
+        "diff_2d_axis0": to_serializable(np.diff(sort_2d, axis=0)),
+        "diff_2d_axis1": to_serializable(np.diff(sort_2d, axis=1)),
+        # sort
+        "sort_1d": to_serializable(np.sort(sort_arr)),
+        "sort_2d_axis0": to_serializable(np.sort(sort_2d, axis=0)),
+        "sort_2d_axis1": to_serializable(np.sort(sort_2d, axis=1)),
+        # argsort
+        "argsort_1d": to_serializable(np.argsort(sort_arr)),
+        "argsort_2d_axis0": to_serializable(np.argsort(sort_2d, axis=0)),
+        "argsort_2d_axis1": to_serializable(np.argsort(sort_2d, axis=1)),
+        # unique
+        "unique": to_serializable(np.unique(unique_arr)),
+        # searchsorted
+        "searchsorted_left": to_serializable(np.searchsorted([1, 2, 4, 5, 7], [0, 2, 3, 6, 8], side='left')),
+        "searchsorted_right": to_serializable(np.searchsorted([1, 2, 4, 5, 7], [0, 2, 3, 6, 8], side='right')),
+    }
+
+    # =========================================================================
+    # ARRAY MANIPULATION (Tier 3+4)
+    # =========================================================================
+    arr_1d = np.array([1, 2, 3])
+    arr_2d = np.array([[1, 2], [3, 4]])
+    arr_sparse = np.array([0, 1, 0, 2, 0, 3])
+
+    ref["tests"]["array_manipulation_advanced"] = {
+        "input_1d": to_serializable(arr_1d),
+        "input_2d": to_serializable(arr_2d),
+        # tile
+        "tile_1d_2": to_serializable(np.tile(arr_1d, 2)),
+        "tile_1d_tuple": to_serializable(np.tile(arr_1d, (2, 3))),
+        "tile_2d_rows": to_serializable(np.tile(arr_2d, (2, 1))),
+        "tile_2d_cols": to_serializable(np.tile(arr_2d, (1, 3))),
+        # repeat
+        "repeat_1d": to_serializable(np.repeat(arr_1d, 3)),
+        "repeat_2d_axis0": to_serializable(np.repeat(arr_2d, 2, axis=0)),
+        "repeat_2d_axis1": to_serializable(np.repeat(arr_2d, 2, axis=1)),
+        # flip
+        "flip_1d": to_serializable(np.flip(arr_1d)),
+        "flip_2d": to_serializable(np.flip(arr_2d)),
+        "flip_2d_axis0": to_serializable(np.flip(arr_2d, axis=0)),
+        "flip_2d_axis1": to_serializable(np.flip(arr_2d, axis=1)),
+        # rot90
+        "rot90_k1": to_serializable(np.rot90(arr_2d)),
+        "rot90_k2": to_serializable(np.rot90(arr_2d, k=2)),
+        "rot90_k3": to_serializable(np.rot90(arr_2d, k=3)),
+        # sign
+        "sign": to_serializable(np.sign([-5, 0, 3, -2, 7])),
+        # mod
+        "mod_scalar": to_serializable(np.mod([5, 7, 9, 11], 3)),
+        "mod_array": to_serializable(np.mod([5, 7, 9, 11], [2, 3, 4, 5])),
+        # split
+        "split_equal": to_serializable([x.tolist() for x in np.split(np.arange(9), 3)]),
+        "split_indices": to_serializable([x.tolist() for x in np.split(np.arange(9), [2, 5])]),
+        # nonzero
+        "nonzero_1d": to_serializable(np.nonzero(arr_sparse)),
+        "nonzero_2d": to_serializable(np.nonzero(np.array([[0, 1, 0], [2, 0, 3]]))),
+    }
+
+    # =========================================================================
+    # APPROXIMATE COMPARISON
+    # =========================================================================
+    a_close = np.array([1.0, 2.0, 3.0])
+    b_close = np.array([1.0, 2.00001, 3.0001])
+    b_not_close = np.array([1.0, 2.1, 3.5])
+
+    ref["tests"]["approximate_comparison"] = {
+        "input_a": to_serializable(a_close),
+        "input_b_close": to_serializable(b_close),
+        "input_b_not_close": to_serializable(b_not_close),
+        "allclose_true": to_serializable(np.allclose(a_close, b_close)),
+        "allclose_false": to_serializable(np.allclose(a_close, b_not_close)),
+        "allclose_custom_tol": to_serializable(np.allclose(a_close, b_not_close, rtol=0.5, atol=0.5)),
+        "isclose_close": to_serializable(np.isclose(a_close, b_close)),
+        "isclose_not_close": to_serializable(np.isclose(a_close, b_not_close)),
+    }
 
     # =========================================================================
     # BOOLEAN REDUCTIONS

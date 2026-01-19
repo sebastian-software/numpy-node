@@ -34,6 +34,9 @@ import {
   cos,
   abs,
   negative,
+  round,
+  floor,
+  ceil,
   sum,
   prod,
   mean,
@@ -41,6 +44,10 @@ import {
   variance,
   min,
   max,
+  argmin,
+  argmax,
+  cumsum,
+  cumprod,
   median,
   equal,
   not_equal,
@@ -54,6 +61,29 @@ import {
   logical_not,
   any,
   all,
+  clip,
+  where,
+  squeeze,
+  expand_dims,
+  concatenate,
+  stack,
+  vstack,
+  hstack,
+  diff,
+  sort,
+  argsort,
+  unique,
+  searchsorted,
+  tile,
+  repeat,
+  flip,
+  rot90,
+  split,
+  nonzero,
+  sign,
+  mod,
+  isclose,
+  allclose,
   matmul,
   dot,
   inv,
@@ -92,6 +122,11 @@ interface ReferenceData {
     reductions: TestCategory;
     comparison: TestCategory;
     logical: TestCategory;
+    array_manipulation: TestCategory;
+    array_manipulation_advanced: TestCategory;
+    approximate_comparison: TestCategory;
+    array_joining: TestCategory;
+    sorting_searching: TestCategory;
     boolean_reductions: TestCategory;
     linalg: TestCategory;
     advanced_math: TestCategory;
@@ -342,6 +377,24 @@ describe('NumPy Conformity Tests', () => {
       const result = negative(x);
       expectArrayClose(result, ref.tests.unary_math.negative);
     });
+
+    it('round(arr)', () => {
+      const x = array([-1.7, -0.5, 0.5, 1.3, 2.5]);
+      const result = round(x);
+      expectArrayClose(result, ref.tests.unary_math.round);
+    });
+
+    it('floor(arr)', () => {
+      const x = array([-1.7, -0.5, 0.5, 1.3, 2.5]);
+      const result = floor(x);
+      expectArrayClose(result, ref.tests.unary_math.floor);
+    });
+
+    it('ceil(arr)', () => {
+      const x = array([-1.7, -0.5, 0.5, 1.3, 2.5]);
+      const result = ceil(x);
+      expectArrayClose(result, ref.tests.unary_math.ceil);
+    });
   });
 
   describe('Reduction Operations', () => {
@@ -391,6 +444,120 @@ describe('NumPy Conformity Tests', () => {
       const arr = array([1, 2, 3, 4, 5]);
       const result = median(arr);
       expect(result).toBeCloseTo(ref.tests.reductions.median as number, 10);
+    });
+
+    it('argmin(arr)', () => {
+      const arr = array([1, 2, 3, 4, 5]);
+      const result = argmin(arr);
+      expect(result).toBe(ref.tests.reductions.argmin);
+    });
+
+    it('argmax(arr)', () => {
+      const arr = array([1, 2, 3, 4, 5]);
+      const result = argmax(arr);
+      expect(result).toBe(ref.tests.reductions.argmax);
+    });
+
+    it('argmin(arr2d, axis=0)', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = argmin(arr2d, 0);
+      expectArrayClose(result as NDArray, ref.tests.reductions.argmin_axis0 as ArrayRef);
+    });
+
+    it('argmin(arr2d, axis=1)', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = argmin(arr2d, 1);
+      expectArrayClose(result as NDArray, ref.tests.reductions.argmin_axis1 as ArrayRef);
+    });
+
+    it('argmax(arr2d, axis=0)', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = argmax(arr2d, 0);
+      expectArrayClose(result as NDArray, ref.tests.reductions.argmax_axis0 as ArrayRef);
+    });
+
+    it('argmax(arr2d, axis=1)', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = argmax(arr2d, 1);
+      expectArrayClose(result as NDArray, ref.tests.reductions.argmax_axis1 as ArrayRef);
+    });
+
+    it('cumsum(arr)', () => {
+      const arr = array([1, 2, 3, 4, 5]);
+      const result = cumsum(arr);
+      expectArrayClose(result, ref.tests.reductions.cumsum_1d as ArrayRef);
+    });
+
+    it('cumsum(arr2d) - flattened', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = cumsum(arr2d);
+      expectArrayClose(result, ref.tests.reductions.cumsum_2d_flat as ArrayRef);
+    });
+
+    it('cumsum(arr2d, axis=0)', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = cumsum(arr2d, 0);
+      expectArrayClose(result, ref.tests.reductions.cumsum_axis0 as ArrayRef);
+    });
+
+    it('cumsum(arr2d, axis=1)', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = cumsum(arr2d, 1);
+      expectArrayClose(result, ref.tests.reductions.cumsum_axis1 as ArrayRef);
+    });
+
+    it('cumprod(arr)', () => {
+      const arr = array([1, 2, 3, 4, 5]);
+      const result = cumprod(arr);
+      expectArrayClose(result, ref.tests.reductions.cumprod_1d as ArrayRef);
+    });
+
+    it('cumprod(arr2d) - flattened', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = cumprod(arr2d);
+      expectArrayClose(result, ref.tests.reductions.cumprod_2d_flat as ArrayRef);
+    });
+
+    it('cumprod(arr2d, axis=0)', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = cumprod(arr2d, 0);
+      expectArrayClose(result, ref.tests.reductions.cumprod_axis0 as ArrayRef);
+    });
+
+    it('cumprod(arr2d, axis=1)', () => {
+      const arr2d = array([
+        [1, 2, 3],
+        [4, 5, 6],
+      ]);
+      const result = cumprod(arr2d, 1);
+      expectArrayClose(result, ref.tests.reductions.cumprod_axis1 as ArrayRef);
     });
 
     it('sum(arr2d, axis=0)', () => {
@@ -512,6 +679,512 @@ describe('NumPy Conformity Tests', () => {
       const b1d = array([1, 0]);
       const result = logical_and(a2d, b1d);
       expectArrayClose(result, ref.tests.logical.broadcast_and);
+    });
+  });
+
+  describe('Array Manipulation', () => {
+    it('clip(arr, 0, 5)', () => {
+      const arr = array([-2, 5, 3, -1, 8]);
+      const result = clip(arr, 0, 5);
+      expectArrayClose(result, ref.tests.array_manipulation.clip_basic as ArrayRef);
+    });
+
+    it('clip(arr2d, 2, 7)', () => {
+      const arr2d = array([
+        [1, 8, 3],
+        [7, 2, 9],
+      ]);
+      const result = clip(arr2d, 2, 7);
+      expectArrayClose(result, ref.tests.array_manipulation.clip_2d as ArrayRef);
+    });
+
+    it('where(condition, x, y) - same shape', () => {
+      const condition = array([1, 0, 1, 0, 1]);
+      const x = array([1, 2, 3, 4, 5]);
+      const y = array([10, 20, 30, 40, 50]);
+      const result = where(condition, x, y);
+      expectArrayClose(result, ref.tests.array_manipulation.where_basic as ArrayRef);
+    });
+
+    it('where(arr > 0, arr, zeros)', () => {
+      const arr = array([-2, 5, 3, -1, 8]);
+      const condition = greater(arr, 0);
+      const result = where(condition, arr, zeros([5]));
+      expectArrayClose(result, ref.tests.array_manipulation.where_comparison as ArrayRef);
+    });
+
+    it('where with broadcasting', () => {
+      const condition = array([
+        [1, 0],
+        [0, 1],
+      ]);
+      const x = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const y = array([10, 20]);
+      const result = where(condition, x, y);
+      expectArrayClose(result, ref.tests.array_manipulation.where_broadcast as ArrayRef);
+    });
+
+    it('squeeze - remove all 1-dims', () => {
+      const a = array([[[1, 2, 3]]]); // shape (1, 1, 3)
+      const result = squeeze(a);
+      expectArrayClose(result, ref.tests.array_manipulation.squeeze_all as ArrayRef);
+    });
+
+    it('squeeze - specific axis', () => {
+      const a = array([[1], [2], [3]]); // shape (3, 1)
+      const result = squeeze(a, 1);
+      expectArrayClose(result, ref.tests.array_manipulation.squeeze_axis as ArrayRef);
+    });
+
+    it('expand_dims - axis=0', () => {
+      const a = array([1, 2, 3]); // shape (3,)
+      const result = expand_dims(a, 0);
+      expectArrayClose(result, ref.tests.array_manipulation.expand_dims_0 as ArrayRef);
+    });
+
+    it('expand_dims - axis=1', () => {
+      const a = array([1, 2, 3]); // shape (3,)
+      const result = expand_dims(a, 1);
+      expectArrayClose(result, ref.tests.array_manipulation.expand_dims_1 as ArrayRef);
+    });
+
+    it('expand_dims - axis=-1', () => {
+      const a = array([1, 2, 3]); // shape (3,)
+      const result = expand_dims(a, -1);
+      expectArrayClose(result, ref.tests.array_manipulation.expand_dims_neg as ArrayRef);
+    });
+  });
+
+  describe('Array Joining', () => {
+    it('concatenate - 1D arrays', () => {
+      const a = array([1, 2, 3]);
+      const b = array([4, 5, 6]);
+      const result = concatenate([a, b]);
+      expectArrayClose(result, ref.tests.array_joining.concat_1d as ArrayRef);
+    });
+
+    it('concatenate - 2D arrays axis=0', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const b = array([
+        [5, 6],
+        [7, 8],
+      ]);
+      const result = concatenate([a, b], 0);
+      expectArrayClose(result, ref.tests.array_joining.concat_2d_axis0 as ArrayRef);
+    });
+
+    it('concatenate - 2D arrays axis=1', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const b = array([
+        [5, 6],
+        [7, 8],
+      ]);
+      const result = concatenate([a, b], 1);
+      expectArrayClose(result, ref.tests.array_joining.concat_2d_axis1 as ArrayRef);
+    });
+
+    it('stack - 1D arrays axis=0', () => {
+      const a = array([1, 2, 3]);
+      const b = array([4, 5, 6]);
+      const result = stack([a, b], 0);
+      expectArrayClose(result, ref.tests.array_joining.stack_1d_axis0 as ArrayRef);
+    });
+
+    it('stack - 1D arrays axis=1', () => {
+      const a = array([1, 2, 3]);
+      const b = array([4, 5, 6]);
+      const result = stack([a, b], 1);
+      expectArrayClose(result, ref.tests.array_joining.stack_1d_axis1 as ArrayRef);
+    });
+
+    it('stack - 2D arrays axis=0', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const b = array([
+        [5, 6],
+        [7, 8],
+      ]);
+      const result = stack([a, b], 0);
+      expectArrayClose(result, ref.tests.array_joining.stack_2d_axis0 as ArrayRef);
+    });
+
+    it('stack - 2D arrays axis=1', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const b = array([
+        [5, 6],
+        [7, 8],
+      ]);
+      const result = stack([a, b], 1);
+      expectArrayClose(result, ref.tests.array_joining.stack_2d_axis1 as ArrayRef);
+    });
+
+    it('vstack - 1D arrays', () => {
+      const a = array([1, 2, 3]);
+      const b = array([4, 5, 6]);
+      const result = vstack([a, b]);
+      expectArrayClose(result, ref.tests.array_joining.vstack_1d as ArrayRef);
+    });
+
+    it('vstack - 2D arrays', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const b = array([
+        [5, 6],
+        [7, 8],
+      ]);
+      const result = vstack([a, b]);
+      expectArrayClose(result, ref.tests.array_joining.vstack_2d as ArrayRef);
+    });
+
+    it('hstack - 1D arrays', () => {
+      const a = array([1, 2, 3]);
+      const b = array([4, 5, 6]);
+      const result = hstack([a, b]);
+      expectArrayClose(result, ref.tests.array_joining.hstack_1d as ArrayRef);
+    });
+
+    it('hstack - 2D arrays', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const b = array([
+        [5, 6],
+        [7, 8],
+      ]);
+      const result = hstack([a, b]);
+      expectArrayClose(result, ref.tests.array_joining.hstack_2d as ArrayRef);
+    });
+  });
+
+  describe('Sorting and Searching', () => {
+    it('diff - 1D array', () => {
+      const a = array([1, 3, 6, 10, 15]);
+      const result = diff(a);
+      expectArrayClose(result, ref.tests.sorting_searching.diff_1d as ArrayRef);
+    });
+
+    it('diff - 1D array with n=2', () => {
+      const a = array([1, 3, 6, 10, 15]);
+      const result = diff(a, 2);
+      expectArrayClose(result, ref.tests.sorting_searching.diff_1d_n2 as ArrayRef);
+    });
+
+    it('diff - 2D array axis=0', () => {
+      const a = array([
+        [3, 1, 2],
+        [6, 4, 5],
+      ]);
+      const result = diff(a, 1, 0);
+      expectArrayClose(result, ref.tests.sorting_searching.diff_2d_axis0 as ArrayRef);
+    });
+
+    it('diff - 2D array axis=1', () => {
+      const a = array([
+        [3, 1, 2],
+        [6, 4, 5],
+      ]);
+      const result = diff(a, 1, 1);
+      expectArrayClose(result, ref.tests.sorting_searching.diff_2d_axis1 as ArrayRef);
+    });
+
+    it('sort - 1D array', () => {
+      const a = array([3, 1, 4, 1, 5, 9, 2, 6]);
+      const result = sort(a);
+      expectArrayClose(result, ref.tests.sorting_searching.sort_1d as ArrayRef);
+    });
+
+    it('sort - 2D array axis=0', () => {
+      const a = array([
+        [3, 1, 2],
+        [6, 4, 5],
+      ]);
+      const result = sort(a, 0);
+      expectArrayClose(result, ref.tests.sorting_searching.sort_2d_axis0 as ArrayRef);
+    });
+
+    it('sort - 2D array axis=1', () => {
+      const a = array([
+        [3, 1, 2],
+        [6, 4, 5],
+      ]);
+      const result = sort(a, 1);
+      expectArrayClose(result, ref.tests.sorting_searching.sort_2d_axis1 as ArrayRef);
+    });
+
+    it('argsort - 1D array', () => {
+      const a = array([3, 1, 4, 1, 5, 9, 2, 6]);
+      const result = argsort(a);
+      expectArrayClose(result, ref.tests.sorting_searching.argsort_1d as ArrayRef);
+    });
+
+    it('argsort - 2D array axis=0', () => {
+      const a = array([
+        [3, 1, 2],
+        [6, 4, 5],
+      ]);
+      const result = argsort(a, 0);
+      expectArrayClose(result, ref.tests.sorting_searching.argsort_2d_axis0 as ArrayRef);
+    });
+
+    it('argsort - 2D array axis=1', () => {
+      const a = array([
+        [3, 1, 2],
+        [6, 4, 5],
+      ]);
+      const result = argsort(a, 1);
+      expectArrayClose(result, ref.tests.sorting_searching.argsort_2d_axis1 as ArrayRef);
+    });
+
+    it('unique', () => {
+      const a = array([3, 1, 2, 1, 3, 2, 4, 1]);
+      const result = unique(a);
+      expectArrayClose(result, ref.tests.sorting_searching.unique as ArrayRef);
+    });
+
+    it('searchsorted - left', () => {
+      const a = array([1, 2, 4, 5, 7]);
+      const v = array([0, 2, 3, 6, 8]);
+      const result = searchsorted(a, v, 'left');
+      expectArrayClose(result, ref.tests.sorting_searching.searchsorted_left as ArrayRef);
+    });
+
+    it('searchsorted - right', () => {
+      const a = array([1, 2, 4, 5, 7]);
+      const v = array([0, 2, 3, 6, 8]);
+      const result = searchsorted(a, v, 'right');
+      expectArrayClose(result, ref.tests.sorting_searching.searchsorted_right as ArrayRef);
+    });
+  });
+
+  describe('Array Manipulation Advanced (Tier 3+4)', () => {
+    it('tile - 1D scalar', () => {
+      const a = array([1, 2, 3]);
+      const result = tile(a, 2);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.tile_1d_2 as ArrayRef);
+    });
+
+    it('tile - 1D with shape', () => {
+      const a = array([1, 2, 3]);
+      const result = tile(a, [2, 3]);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.tile_1d_tuple as ArrayRef);
+    });
+
+    it('tile - 2D rows', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = tile(a, [2, 1]);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.tile_2d_rows as ArrayRef);
+    });
+
+    it('tile - 2D cols', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = tile(a, [1, 3]);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.tile_2d_cols as ArrayRef);
+    });
+
+    it('repeat - 1D', () => {
+      const a = array([1, 2, 3]);
+      const result = repeat(a, 3);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.repeat_1d as ArrayRef);
+    });
+
+    it('repeat - 2D axis=0', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = repeat(a, 2, 0);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.repeat_2d_axis0 as ArrayRef);
+    });
+
+    it('repeat - 2D axis=1', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = repeat(a, 2, 1);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.repeat_2d_axis1 as ArrayRef);
+    });
+
+    it('flip - 1D', () => {
+      const a = array([1, 2, 3]);
+      const result = flip(a);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.flip_1d as ArrayRef);
+    });
+
+    it('flip - 2D all', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = flip(a);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.flip_2d as ArrayRef);
+    });
+
+    it('flip - 2D axis=0', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = flip(a, 0);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.flip_2d_axis0 as ArrayRef);
+    });
+
+    it('flip - 2D axis=1', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = flip(a, 1);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.flip_2d_axis1 as ArrayRef);
+    });
+
+    it('rot90 - k=1', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = rot90(a);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.rot90_k1 as ArrayRef);
+    });
+
+    it('rot90 - k=2', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = rot90(a, 2);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.rot90_k2 as ArrayRef);
+    });
+
+    it('rot90 - k=3', () => {
+      const a = array([
+        [1, 2],
+        [3, 4],
+      ]);
+      const result = rot90(a, 3);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.rot90_k3 as ArrayRef);
+    });
+
+    it('sign', () => {
+      const a = array([-5, 0, 3, -2, 7]);
+      const result = sign(a);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.sign as ArrayRef);
+    });
+
+    it('mod - scalar', () => {
+      const a = array([5, 7, 9, 11]);
+      const result = mod(a, 3);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.mod_scalar as ArrayRef);
+    });
+
+    it('mod - array', () => {
+      const a = array([5, 7, 9, 11]);
+      const b = array([2, 3, 4, 5]);
+      const result = mod(a, b);
+      expectArrayClose(result, ref.tests.array_manipulation_advanced.mod_array as ArrayRef);
+    });
+
+    it('split - equal parts', () => {
+      const a = arange(9);
+      const results = split(a, 3);
+      const expected = ref.tests.array_manipulation_advanced.split_equal as number[][];
+      expect(results.length).toBe(expected.length);
+      for (let i = 0; i < results.length; i++) {
+        expect(results[i]!.toArray()).toEqual(expected[i]);
+      }
+    });
+
+    it('split - at indices', () => {
+      const a = arange(9);
+      const results = split(a, [2, 5]);
+      const expected = ref.tests.array_manipulation_advanced.split_indices as number[][];
+      expect(results.length).toBe(expected.length);
+      for (let i = 0; i < results.length; i++) {
+        expect(results[i]!.toArray()).toEqual(expected[i]);
+      }
+    });
+
+    it('nonzero - 1D', () => {
+      const a = array([0, 1, 0, 2, 0, 3]);
+      const results = nonzero(a);
+      const expected = ref.tests.array_manipulation_advanced.nonzero_1d as ArrayRef[];
+      expect(results.length).toBe(expected.length);
+      for (let i = 0; i < results.length; i++) {
+        expectArrayClose(results[i]!, expected[i]!);
+      }
+    });
+
+    it('nonzero - 2D', () => {
+      const a = array([
+        [0, 1, 0],
+        [2, 0, 3],
+      ]);
+      const results = nonzero(a);
+      const expected = ref.tests.array_manipulation_advanced.nonzero_2d as ArrayRef[];
+      expect(results.length).toBe(expected.length);
+      for (let i = 0; i < results.length; i++) {
+        expectArrayClose(results[i]!, expected[i]!);
+      }
+    });
+  });
+
+  describe('Approximate Comparison', () => {
+    it('allclose - true', () => {
+      const a = array([1.0, 2.0, 3.0]);
+      const b = array([1.0, 2.00001, 3.0001]);
+      const result = allclose(a, b);
+      expect(result).toBe(ref.tests.approximate_comparison.allclose_true);
+    });
+
+    it('allclose - false', () => {
+      const a = array([1.0, 2.0, 3.0]);
+      const b = array([1.0, 2.1, 3.5]);
+      const result = allclose(a, b);
+      expect(result).toBe(ref.tests.approximate_comparison.allclose_false);
+    });
+
+    it('allclose - custom tolerance', () => {
+      const a = array([1.0, 2.0, 3.0]);
+      const b = array([1.0, 2.1, 3.5]);
+      const result = allclose(a, b, 0.5, 0.5);
+      expect(result).toBe(ref.tests.approximate_comparison.allclose_custom_tol);
+    });
+
+    it('isclose - close values', () => {
+      const a = array([1.0, 2.0, 3.0]);
+      const b = array([1.0, 2.00001, 3.0001]);
+      const result = isclose(a, b);
+      expectArrayClose(result, ref.tests.approximate_comparison.isclose_close as ArrayRef);
+    });
+
+    it('isclose - not close values', () => {
+      const a = array([1.0, 2.0, 3.0]);
+      const b = array([1.0, 2.1, 3.5]);
+      const result = isclose(a, b);
+      expectArrayClose(result, ref.tests.approximate_comparison.isclose_not_close as ArrayRef);
     });
   });
 
@@ -786,16 +1459,53 @@ describe('Completeness Check', () => {
     arithmetic: ['add', 'subtract', 'multiply', 'divide', 'power'],
 
     // Unary math functions
-    unary_math: ['sqrt', 'exp', 'log', 'sin', 'cos', 'abs', 'negative'],
+    unary_math: ['sqrt', 'exp', 'log', 'sin', 'cos', 'abs', 'negative', 'round', 'floor', 'ceil'],
 
     // Reduction operations
-    reductions: ['sum', 'prod', 'mean', 'std', 'variance', 'min', 'max', 'median'],
+    reductions: [
+      'sum',
+      'prod',
+      'mean',
+      'std',
+      'variance',
+      'min',
+      'max',
+      'median',
+      'argmin',
+      'argmax',
+      'cumsum',
+      'cumprod',
+    ],
 
     // Comparison operators
     comparison: ['equal', 'not_equal', 'less', 'less_equal', 'greater', 'greater_equal'],
 
     // Logical operators
     logical: ['logical_and', 'logical_or', 'logical_xor', 'logical_not'],
+
+    // Array manipulation
+    array_manipulation: ['clip', 'where', 'squeeze', 'expand_dims'],
+
+    // Array joining
+    array_joining: ['concatenate', 'stack', 'vstack', 'hstack'],
+
+    // Sorting and searching
+    sorting_searching: ['diff', 'sort', 'argsort', 'unique', 'searchsorted'],
+
+    // Array manipulation advanced (Tier 3+4)
+    array_manipulation_advanced: [
+      'tile',
+      'repeat',
+      'flip',
+      'rot90',
+      'sign',
+      'mod',
+      'split',
+      'nonzero',
+    ],
+
+    // Approximate comparison
+    approximate_comparison: ['allclose', 'isclose'],
 
     // Boolean reductions
     boolean_reductions: ['any', 'all'],
@@ -827,10 +1537,37 @@ describe('Completeness Check', () => {
   const TESTED_FUNCTIONS = {
     array_creation: ['zeros', 'ones', 'full', 'arange', 'linspace', 'eye'],
     arithmetic: ['add', 'subtract', 'multiply', 'divide', 'power'],
-    unary_math: ['sqrt', 'exp', 'log', 'sin', 'cos', 'abs', 'negative'],
-    reductions: ['sum', 'prod', 'mean', 'std', 'variance', 'min', 'max', 'median'],
+    unary_math: ['sqrt', 'exp', 'log', 'sin', 'cos', 'abs', 'negative', 'round', 'floor', 'ceil'],
+    reductions: [
+      'sum',
+      'prod',
+      'mean',
+      'std',
+      'variance',
+      'min',
+      'max',
+      'median',
+      'argmin',
+      'argmax',
+      'cumsum',
+      'cumprod',
+    ],
     comparison: ['equal', 'not_equal', 'less', 'less_equal', 'greater', 'greater_equal'],
     logical: ['logical_and', 'logical_or', 'logical_xor', 'logical_not'],
+    array_manipulation: ['clip', 'where', 'squeeze', 'expand_dims'],
+    array_joining: ['concatenate', 'stack', 'vstack', 'hstack'],
+    sorting_searching: ['diff', 'sort', 'argsort', 'unique', 'searchsorted'],
+    array_manipulation_advanced: [
+      'tile',
+      'repeat',
+      'flip',
+      'rot90',
+      'sign',
+      'mod',
+      'split',
+      'nonzero',
+    ],
+    approximate_comparison: ['allclose', 'isclose'],
     boolean_reductions: ['any', 'all'],
     linalg: [
       'matmul',
@@ -886,40 +1623,6 @@ describe('Completeness Check', () => {
 
     // NumPy functions NOT YET implemented (from MISSING_FEATURES.md)
     const MISSING_FROM_NUMPY = [
-      // Tier 1 - Essential
-      'argmin',
-      'argmax',
-      'clip',
-      'where',
-      'concatenate',
-      'stack',
-      // Tier 2 - Very common
-      'cumsum',
-      'cumprod',
-      'diff',
-      'sort',
-      'argsort',
-      'unique',
-      // Tier 3 - Common
-      'round',
-      'floor',
-      'ceil',
-      'searchsorted',
-      'tile',
-      'repeat',
-      'squeeze',
-      'expand_dims',
-      'vstack',
-      'hstack',
-      // Tier 4 - Useful
-      'flip',
-      'rot90',
-      'sign',
-      'mod',
-      'allclose',
-      'isclose',
-      'nonzero',
-      'split',
       // Tier 5 - Advanced
       'fft',
       'ifft',
@@ -981,6 +1684,9 @@ describe('Completeness Check', () => {
       'tan',
       'abs',
       'negative',
+      'round',
+      'floor',
+      'ceil',
       // Reductions
       'sum',
       'prod',
@@ -990,6 +1696,10 @@ describe('Completeness Check', () => {
       'median',
       'min',
       'max',
+      'argmin',
+      'argmax',
+      'cumsum',
+      'cumprod',
       // Advanced statistics
       'zscore',
       'corrcoef',
@@ -1013,6 +1723,33 @@ describe('Completeness Check', () => {
       // Boolean reductions
       'any',
       'all',
+      // Array manipulation
+      'clip',
+      'where',
+      'squeeze',
+      'expand_dims',
+      'concatenate',
+      'stack',
+      'vstack',
+      'hstack',
+      // Sorting and searching
+      'diff',
+      'sort',
+      'argsort',
+      'unique',
+      'searchsorted',
+      // Array manipulation (Tier 3+4)
+      'tile',
+      'repeat',
+      'flip',
+      'rot90',
+      'split',
+      'nonzero',
+      'sign',
+      'mod',
+      // Approximate comparison
+      'isclose',
+      'allclose',
       // Linear algebra
       'matmul',
       'matmul_nt',

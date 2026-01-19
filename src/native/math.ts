@@ -211,6 +211,36 @@ export function max(a: NDArray, axis?: number): NDArray | number {
 }
 
 /**
+ * Returns the indices of the minimum values along an axis.
+ * In case of multiple occurrences of the minimum value, returns the index of the first occurrence.
+ * @param a Input array
+ * @param axis Axis along which to find indices (optional)
+ * @returns Index of minimum as number (global) or NDArray (along axis)
+ */
+export function argmin(a: NDArray, axis?: number): NDArray | number {
+  const result = math.argmin(a._native, axis);
+  if (typeof result === 'number') {
+    return result;
+  }
+  return new NDArray(result);
+}
+
+/**
+ * Returns the indices of the maximum values along an axis.
+ * In case of multiple occurrences of the maximum value, returns the index of the first occurrence.
+ * @param a Input array
+ * @param axis Axis along which to find indices (optional)
+ * @returns Index of maximum as number (global) or NDArray (along axis)
+ */
+export function argmax(a: NDArray, axis?: number): NDArray | number {
+  const result = math.argmax(a._native, axis);
+  if (typeof result === 'number') {
+    return result;
+  }
+  return new NDArray(result);
+}
+
+/**
  * Product of array elements
  */
 export function prod(a: NDArray, axis?: number): NDArray | number {
@@ -219,6 +249,277 @@ export function prod(a: NDArray, axis?: number): NDArray | number {
     return result;
   }
   return new NDArray(result);
+}
+
+/**
+ * Cumulative sum along axis
+ * @param a Input array
+ * @param axis Axis along which to compute cumulative sum. If not specified, flattens array first.
+ * @returns Array with cumulative sums
+ */
+export function cumsum(a: NDArray, axis?: number): NDArray {
+  return new NDArray(math.cumsum(a._native, axis));
+}
+
+/**
+ * Cumulative product along axis
+ * @param a Input array
+ * @param axis Axis along which to compute cumulative product. If not specified, flattens array first.
+ * @returns Array with cumulative products
+ */
+export function cumprod(a: NDArray, axis?: number): NDArray {
+  return new NDArray(math.cumprod(a._native, axis));
+}
+
+// ============================================================
+// Array Joining
+// ============================================================
+
+/**
+ * Join arrays along an existing axis
+ * @param arrays Sequence of arrays to concatenate
+ * @param axis Axis along which to concatenate (default: 0)
+ * @returns Concatenated array
+ */
+export function concatenate(arrays: NDArray[], axis: number = 0): NDArray {
+  return new NDArray(
+    math.concatenate(
+      arrays.map((a) => a._native),
+      axis
+    )
+  );
+}
+
+/**
+ * Join arrays along a new axis
+ * @param arrays Sequence of arrays to stack (must have same shape)
+ * @param axis Axis in the result array along which to stack (default: 0)
+ * @returns Stacked array with one more dimension than input arrays
+ */
+export function stack(arrays: NDArray[], axis: number = 0): NDArray {
+  return new NDArray(
+    math.stack(
+      arrays.map((a) => a._native),
+      axis
+    )
+  );
+}
+
+/**
+ * Stack arrays vertically (row-wise)
+ * Equivalent to concatenate along axis 0 for 2D+ arrays,
+ * or stack along axis 0 for 1D arrays (making them rows)
+ * @param arrays Sequence of arrays to stack
+ * @returns Vertically stacked array
+ */
+export function vstack(arrays: NDArray[]): NDArray {
+  if (arrays.length === 0) {
+    throw new Error('Need at least one array to vstack');
+  }
+  const first = arrays[0]!;
+  // For 1D arrays, stack them as rows (same as np.row_stack)
+  if (first.ndim === 1) {
+    return stack(arrays, 0);
+  }
+  // For 2D+ arrays, concatenate along axis 0
+  return concatenate(arrays, 0);
+}
+
+/**
+ * Stack arrays horizontally (column-wise)
+ * Equivalent to concatenate along axis 1 for 2D+ arrays,
+ * or concatenate along axis 0 for 1D arrays
+ * @param arrays Sequence of arrays to stack
+ * @returns Horizontally stacked array
+ */
+export function hstack(arrays: NDArray[]): NDArray {
+  if (arrays.length === 0) {
+    throw new Error('Need at least one array to hstack');
+  }
+  const first = arrays[0]!;
+  // For 1D arrays, concatenate along axis 0 (horizontally for 1D)
+  if (first.ndim === 1) {
+    return concatenate(arrays, 0);
+  }
+  // For 2D+ arrays, concatenate along axis 1
+  return concatenate(arrays, 1);
+}
+
+// ============================================================
+// Sorting and Searching
+// ============================================================
+
+/**
+ * Calculate the n-th discrete difference along the given axis
+ * @param a Input array
+ * @param n Number of times to apply the difference (default: 1)
+ * @param axis Axis along which to compute difference (default: -1, last axis)
+ * @returns Array of differences with shape reduced by n along the given axis
+ */
+export function diff(a: NDArray, n: number = 1, axis: number = -1): NDArray {
+  return new NDArray(math.diff(a._native, n, axis));
+}
+
+/**
+ * Return a sorted copy of the array
+ * @param a Input array
+ * @param axis Axis along which to sort (default: -1, last axis)
+ * @returns Sorted array
+ */
+export function sort(a: NDArray, axis: number = -1): NDArray {
+  return new NDArray(math.sort(a._native, axis));
+}
+
+/**
+ * Return the indices that would sort the array
+ * @param a Input array
+ * @param axis Axis along which to sort (default: -1, last axis)
+ * @returns Array of indices that sort the input
+ */
+export function argsort(a: NDArray, axis: number = -1): NDArray {
+  return new NDArray(math.argsort(a._native, axis));
+}
+
+/**
+ * Find the unique elements of an array (sorted)
+ * @param a Input array (will be flattened if not 1D)
+ * @returns Sorted array of unique values
+ */
+export function unique(a: NDArray): NDArray {
+  return new NDArray(math.unique(a._native));
+}
+
+/**
+ * Find indices where elements should be inserted to maintain order
+ * @param a Sorted input array
+ * @param v Values to insert
+ * @param side 'left' (default) or 'right'
+ * @returns Array of insertion indices
+ */
+export function searchsorted(a: NDArray, v: NDArray, side: 'left' | 'right' = 'left'): NDArray {
+  return new NDArray(math.searchsorted(a._native, v._native, side));
+}
+
+// ============================================================
+// Array Manipulation (Tier 3+4)
+// ============================================================
+
+/**
+ * Construct an array by repeating a the number of times given by reps
+ * @param a Input array
+ * @param reps Number of repetitions along each axis
+ * @returns Tiled array
+ */
+export function tile(a: NDArray, reps: number | number[]): NDArray {
+  const repsArray = Array.isArray(reps) ? reps : [reps];
+  return new NDArray(math.tile(a._native, repsArray));
+}
+
+/**
+ * Repeat elements of an array
+ * @param a Input array
+ * @param repeats Number of repetitions for each element
+ * @param axis Axis along which to repeat. If undefined, flatten first.
+ * @returns Array with repeated elements
+ */
+export function repeat(a: NDArray, repeats: number, axis?: number): NDArray {
+  return new NDArray(math.repeat(a._native, repeats, axis));
+}
+
+/**
+ * Reverse the order of elements along the given axis
+ * @param a Input array
+ * @param axis Axis or axes to flip. If undefined, flip all axes.
+ * @returns Flipped array
+ */
+export function flip(a: NDArray, axis?: number | number[]): NDArray {
+  return new NDArray(math.flip(a._native, axis));
+}
+
+/**
+ * Rotate an array by 90 degrees in the plane specified by axes
+ * @param a Input array (must be at least 2D)
+ * @param k Number of times to rotate (default 1)
+ * @param axes The plane of rotation (default [0, 1])
+ * @returns Rotated array
+ */
+export function rot90(a: NDArray, k: number = 1, axes: [number, number] = [0, 1]): NDArray {
+  return new NDArray(math.rot90(a._native, k, axes));
+}
+
+/**
+ * Split an array into multiple sub-arrays
+ * @param a Input array
+ * @param indices_or_sections Number of equal parts or specific indices to split at
+ * @param axis Axis along which to split (default 0)
+ * @returns Array of sub-arrays
+ */
+export function split(
+  a: NDArray,
+  indices_or_sections: number | number[],
+  axis: number = 0
+): NDArray[] {
+  const result = math.split(a._native, indices_or_sections, axis);
+  return Array.from(result).map((arr) => new NDArray(arr));
+}
+
+/**
+ * Return the indices of non-zero elements
+ * @param a Input array
+ * @returns Tuple of arrays, one for each dimension
+ */
+export function nonzero(a: NDArray): NDArray[] {
+  const result = math.nonzero(a._native);
+  return Array.from(result).map((arr) => new NDArray(arr));
+}
+
+/**
+ * Element-wise sign function
+ * @param a Input array
+ * @returns Array with -1, 0, or 1 for each element
+ */
+export function sign(a: NDArray): NDArray {
+  return new NDArray(math.sign(a._native));
+}
+
+/**
+ * Element-wise modulo operation (NumPy/Python behavior)
+ * @param a Dividend array
+ * @param b Divisor (array or scalar)
+ * @returns Remainder with same sign as divisor
+ */
+export function mod(a: NDArray, b: NDArray | number): NDArray {
+  const bValue = typeof b === 'number' ? b : b._native;
+  return new NDArray(math.mod(a._native, bValue));
+}
+
+/**
+ * Element-wise check if two arrays are close within tolerance
+ * @param a First array
+ * @param b Second array
+ * @param rtol Relative tolerance (default 1e-5)
+ * @param atol Absolute tolerance (default 1e-8)
+ * @returns Boolean array
+ */
+export function isclose(a: NDArray, b: NDArray, rtol: number = 1e-5, atol: number = 1e-8): NDArray {
+  return new NDArray(math.isclose(a._native, b._native, rtol, atol));
+}
+
+/**
+ * Check if all elements of two arrays are close within tolerance
+ * @param a First array
+ * @param b Second array
+ * @param rtol Relative tolerance (default 1e-5)
+ * @param atol Absolute tolerance (default 1e-8)
+ * @returns true if all elements are close
+ */
+export function allclose(
+  a: NDArray,
+  b: NDArray,
+  rtol: number = 1e-5,
+  atol: number = 1e-8
+): boolean {
+  return math.allclose(a._native, b._native, rtol, atol);
 }
 
 // ============================================================
@@ -237,6 +538,33 @@ export function abs(a: NDArray): NDArray {
  */
 export function negative(a: NDArray): NDArray {
   return multiply(a, -1);
+}
+
+/**
+ * Round elements to the nearest integer
+ * @param a Input array
+ * @returns Array with elements rounded to nearest integer
+ */
+export function round(a: NDArray): NDArray {
+  return new NDArray(math.round(a._native));
+}
+
+/**
+ * Floor of array elements (round down to nearest integer)
+ * @param a Input array
+ * @returns Array with floor of each element
+ */
+export function floor(a: NDArray): NDArray {
+  return new NDArray(math.floor(a._native));
+}
+
+/**
+ * Ceiling of array elements (round up to nearest integer)
+ * @param a Input array
+ * @returns Array with ceiling of each element
+ */
+export function ceil(a: NDArray): NDArray {
+  return new NDArray(math.ceil(a._native));
 }
 
 // ============================================================
@@ -417,4 +745,51 @@ export function all(a: NDArray, axis?: number): NDArray | boolean {
     return result;
   }
   return new NDArray(result);
+}
+
+// ============================================================
+// Array Manipulation
+// ============================================================
+
+/**
+ * Clip (limit) the values in an array.
+ * Given an interval, values outside the interval are clipped to the interval edges.
+ * @param a Array containing elements to clip
+ * @param a_min Minimum value
+ * @param a_max Maximum value
+ * @returns An array with values clipped to [a_min, a_max]
+ */
+export function clip(a: NDArray, a_min: number, a_max: number): NDArray {
+  return new NDArray(math.clip(a._native, a_min, a_max));
+}
+
+/**
+ * Return elements chosen from x or y depending on condition.
+ * @param condition Where True, yield x, otherwise yield y
+ * @param x Values from which to choose where condition is True
+ * @param y Values from which to choose where condition is False
+ * @returns An array with elements from x where condition is truthy, and from y elsewhere
+ */
+export function where(condition: NDArray, x: NDArray, y: NDArray): NDArray {
+  return new NDArray(math.where(condition._native, x._native, y._native));
+}
+
+/**
+ * Remove axes of length one from an array.
+ * @param a Input array
+ * @param axis If specified, only squeeze this axis. Must have length 1.
+ * @returns Array with squeezed dimensions removed
+ */
+export function squeeze(a: NDArray, axis?: number): NDArray {
+  return new NDArray(math.squeeze(a._native, axis));
+}
+
+/**
+ * Expand the shape of an array by inserting a new axis.
+ * @param a Input array
+ * @param axis Position in the expanded axes where the new axis is placed
+ * @returns Array with expanded shape
+ */
+export function expand_dims(a: NDArray, axis: number): NDArray {
+  return new NDArray(math.expand_dims(a._native, axis));
 }

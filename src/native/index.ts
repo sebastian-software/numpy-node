@@ -53,9 +53,24 @@ export {
   median,
   min,
   max,
+  argmin,
+  argmax,
   prod,
   abs,
   negative,
+  round,
+  floor,
+  ceil,
+  cumsum,
+  cumprod,
+  concatenate,
+  stack,
+  vstack,
+  hstack,
+  diff,
+  sort,
+  argsort,
+  unique,
   zscore,
   corrcoef,
   percentile,
@@ -77,6 +92,25 @@ export {
   // Boolean reductions
   any,
   all,
+  // Array manipulation
+  clip,
+  where,
+  squeeze,
+  expand_dims,
+  tile,
+  repeat,
+  flip,
+  rot90,
+  split,
+  nonzero,
+  // Sorting and searching
+  searchsorted,
+  // Element-wise math (additional)
+  sign,
+  mod,
+  // Approximate comparison
+  isclose,
+  allclose,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)

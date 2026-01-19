@@ -146,7 +146,39 @@ export interface MathModule {
   median(a: NativeNDArray): number;
   min(a: NativeNDArray, axis?: number): NativeNDArray | number;
   max(a: NativeNDArray, axis?: number): NativeNDArray | number;
+  argmin(a: NativeNDArray, axis?: number): NativeNDArray | number;
+  argmax(a: NativeNDArray, axis?: number): NativeNDArray | number;
+  cumsum(a: NativeNDArray, axis?: number): NativeNDArray;
+  cumprod(a: NativeNDArray, axis?: number): NativeNDArray;
+  concatenate(arrays: NativeNDArray[], axis?: number): NativeNDArray;
+  stack(arrays: NativeNDArray[], axis?: number): NativeNDArray;
+  diff(a: NativeNDArray, n?: number, axis?: number): NativeNDArray;
+  sort(a: NativeNDArray, axis?: number): NativeNDArray;
+  argsort(a: NativeNDArray, axis?: number): NativeNDArray;
+  unique(a: NativeNDArray): NativeNDArray;
+  searchsorted(a: NativeNDArray, v: NativeNDArray, side?: string): NativeNDArray;
+  // Array manipulation (Tier 3+4)
+  tile(a: NativeNDArray, reps: number[]): NativeNDArray;
+  repeat(a: NativeNDArray, repeats: number, axis?: number): NativeNDArray;
+  flip(a: NativeNDArray, axis?: number | number[]): NativeNDArray;
+  rot90(a: NativeNDArray, k?: number, axes?: number[]): NativeNDArray;
+  split(a: NativeNDArray, indices_or_sections: number | number[], axis?: number): NativeNDArray[];
+  nonzero(a: NativeNDArray): NativeNDArray[];
+  // Element-wise math (additional)
+  sign(a: NativeNDArray): NativeNDArray;
+  mod(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  // Approximate comparison
+  isclose(a: NativeNDArray, b: NativeNDArray, rtol?: number, atol?: number): NativeNDArray;
+  allclose(a: NativeNDArray, b: NativeNDArray, rtol?: number, atol?: number): boolean;
   abs(a: NativeNDArray): NativeNDArray;
+  round(a: NativeNDArray): NativeNDArray;
+  floor(a: NativeNDArray): NativeNDArray;
+  ceil(a: NativeNDArray): NativeNDArray;
+  // Array manipulation
+  clip(a: NativeNDArray, min: number, max: number): NativeNDArray;
+  where(condition: NativeNDArray, x: NativeNDArray, y: NativeNDArray): NativeNDArray;
+  squeeze(a: NativeNDArray, axis?: number): NativeNDArray;
+  expand_dims(a: NativeNDArray, axis: number): NativeNDArray;
   zscore(a: NativeNDArray, axis?: number): NativeNDArray;
   corrcoef(a: NativeNDArray): NativeNDArray;
   percentile(a: NativeNDArray, q: number[], axis?: number): NativeNDArray;
