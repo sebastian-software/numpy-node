@@ -386,7 +386,8 @@ export function array(data: ArrayInput, dtype?: DTypeName): NDArray {
   }
 
   if (ArrayBuffer.isView(data)) {
-    return new NDArray(native.fromTypedArray(data));
+    // TypedArray: infer 1D shape from length
+    return new NDArray(native.fromTypedArray(data, [data.length]));
   }
 
   // Flatten nested arrays and infer shape

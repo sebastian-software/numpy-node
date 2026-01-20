@@ -2,6 +2,8 @@
 #include <cmath>
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
+#include <mutex>
 
 #if defined(USE_ACCELERATE)
     #include <Accelerate/Accelerate.h>
@@ -12,6 +14,25 @@ namespace fft {
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
+#endif
+
+#if defined(USE_ACCELERATE)
+// FFT setup cache to avoid repeated creation/destruction
+static std::unordered_map<int, FFTSetupD> fftSetupCache;
+static std::mutex fftCacheMutex;
+
+static FFTSetupD getFFTSetup(int log2n) {
+    std::lock_guard<std::mutex> lock(fftCacheMutex);
+    auto it = fftSetupCache.find(log2n);
+    if (it != fftSetupCache.end()) {
+        return it->second;
+    }
+    FFTSetupD setup = vDSP_create_fftsetupD(log2n, FFT_RADIX2);
+    if (setup) {
+        fftSetupCache[log2n] = setup;
+    }
+    return setup;
+}
 #endif
 
 // Helper to check if n is a power of 2
@@ -156,9 +177,9 @@ Napi::Value Fft(const Napi::CallbackInfo& info) {
     }
 
 #if defined(USE_ACCELERATE)
-    // Use Accelerate vDSP FFT
+    // Use Accelerate vDSP FFT with cached setup
     int log2n = static_cast<int>(std::log2(fftSize));
-    FFTSetupD fftSetup = vDSP_create_fftsetupD(log2n, FFT_RADIX2);
+    FFTSetupD fftSetup = getFFTSetup(log2n);
 
     if (fftSetup) {
         DSPDoubleSplitComplex splitComplex;
@@ -166,7 +187,7 @@ Napi::Value Fft(const Napi::CallbackInfo& info) {
         splitComplex.imagp = imag.data();
 
         vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2n, FFT_FORWARD);
-        vDSP_destroy_fftsetupD(fftSetup);
+        // Don't destroy - it's cached!
     } else {
         // Fallback to Cooley-Tukey
         cooleyTukeyFft(real.data(), imag.data(), fftSize, false);
@@ -246,7 +267,7 @@ Napi::Value Ifft(const Napi::CallbackInfo& info) {
 
 #if defined(USE_ACCELERATE)
     int log2n = static_cast<int>(std::log2(fftSize));
-    FFTSetupD fftSetup = vDSP_create_fftsetupD(log2n, FFT_RADIX2);
+    FFTSetupD fftSetup = getFFTSetup(log2n);
 
     if (fftSetup) {
         DSPDoubleSplitComplex splitComplex;
@@ -259,8 +280,7 @@ Napi::Value Ifft(const Napi::CallbackInfo& info) {
         double scale = 1.0 / fftSize;
         vDSP_vsmulD(real.data(), 1, &scale, real.data(), 1, fftSize);
         vDSP_vsmulD(imag.data(), 1, &scale, imag.data(), 1, fftSize);
-
-        vDSP_destroy_fftsetupD(fftSetup);
+        // Don't destroy - it's cached!
     } else {
         cooleyTukeyFft(real.data(), imag.data(), fftSize, true);
     }
@@ -308,7 +328,7 @@ Napi::Value Rfft(const Napi::CallbackInfo& info) {
 
 #if defined(USE_ACCELERATE)
     int log2n = static_cast<int>(std::log2(fftSize));
-    FFTSetupD fftSetup = vDSP_create_fftsetupD(log2n, FFT_RADIX2);
+    FFTSetupD fftSetup = getFFTSetup(log2n);
 
     if (fftSetup) {
         DSPDoubleSplitComplex splitComplex;
@@ -316,7 +336,7 @@ Napi::Value Rfft(const Napi::CallbackInfo& info) {
         splitComplex.imagp = imag.data();
 
         vDSP_fft_zipD(fftSetup, &splitComplex, 1, log2n, FFT_FORWARD);
-        vDSP_destroy_fftsetupD(fftSetup);
+        // Don't destroy - it's cached!
     } else {
         cooleyTukeyFft(real.data(), imag.data(), fftSize, false);
     }
@@ -396,7 +416,7 @@ Napi::Value Irfft(const Napi::CallbackInfo& info) {
 
 #if defined(USE_ACCELERATE)
     int log2n = static_cast<int>(std::log2(fftSize));
-    FFTSetupD fftSetup = vDSP_create_fftsetupD(log2n, FFT_RADIX2);
+    FFTSetupD fftSetup = getFFTSetup(log2n);
 
     if (fftSetup) {
         DSPDoubleSplitComplex splitComplex;
@@ -407,8 +427,7 @@ Napi::Value Irfft(const Napi::CallbackInfo& info) {
 
         double scale = 1.0 / fftSize;
         vDSP_vsmulD(fullReal.data(), 1, &scale, fullReal.data(), 1, fftSize);
-
-        vDSP_destroy_fftsetupD(fftSetup);
+        // Don't destroy - it's cached!
     } else {
         cooleyTukeyFft(fullReal.data(), fullImag.data(), fftSize, true);
     }

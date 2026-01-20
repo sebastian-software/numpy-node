@@ -486,7 +486,7 @@ Napi::Value NativeNDArray::Reshape(const Napi::CallbackInfo& info) {
 Napi::Value NativeNDArray::Transpose(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    // Transpose is a VIEW operation - just reverse shape and strides!
+    // Transpose is a VIEW operation - just permute shape and strides!
     // No data copy needed. This is O(1) instead of O(n).
 
     // 1D arrays - transpose is identity, return view with same shape/strides
@@ -494,11 +494,48 @@ Napi::Value NativeNDArray::Transpose(const Napi::CallbackInfo& info) {
         return NewView(env, buffer_, offset_, shape_, strides_, dtype_);
     }
 
-    // Reverse shape and strides
-    std::vector<int64_t> newShape(shape_.rbegin(), shape_.rend());
-    std::vector<int64_t> newStrides(strides_.rbegin(), strides_.rend());
+    std::vector<int64_t> newShape;
+    std::vector<int64_t> newStrides;
 
-    // Return a view sharing the same buffer with reversed shape/strides
+    // Check if axes are provided
+    if (info.Length() >= 1 && info[0].IsArray()) {
+        Napi::Array jsAxes = info[0].As<Napi::Array>();
+        size_t ndim = shape_.size();
+
+        // Validate axes length
+        if (jsAxes.Length() != ndim) {
+            Napi::Error::New(env, "axes must have same length as ndim").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
+
+        // Get axes permutation
+        std::vector<int64_t> axes(ndim);
+        for (size_t i = 0; i < ndim; i++) {
+            axes[i] = jsAxes.Get(static_cast<uint32_t>(i)).As<Napi::Number>().Int64Value();
+            // Handle negative axes
+            if (axes[i] < 0) {
+                axes[i] += ndim;
+            }
+            if (axes[i] < 0 || axes[i] >= static_cast<int64_t>(ndim)) {
+                Napi::Error::New(env, "Invalid axis in transpose").ThrowAsJavaScriptException();
+                return env.Undefined();
+            }
+        }
+
+        // Permute shape and strides according to axes
+        newShape.resize(ndim);
+        newStrides.resize(ndim);
+        for (size_t i = 0; i < ndim; i++) {
+            newShape[i] = shape_[axes[i]];
+            newStrides[i] = strides_[axes[i]];
+        }
+    } else {
+        // Default: reverse all axes
+        newShape = std::vector<int64_t>(shape_.rbegin(), shape_.rend());
+        newStrides = std::vector<int64_t>(strides_.rbegin(), strides_.rend());
+    }
+
+    // Return a view sharing the same buffer with permuted shape/strides
     return NewView(env, buffer_, offset_, newShape, newStrides, dtype_);
 }
 

@@ -271,6 +271,78 @@ The native binaries are distributed as platform-specific npm packages (`@numpy-n
 
 For detailed design decisions, see the [Architecture Decision Records](docs/adr/).
 
+## Performance Optimizations
+
+### NumPy (Python) vs numpy-node Comparison
+
+Both libraries use similar low-level optimizations. The table below shows which techniques each library employs:
+
+| Optimization                  | NumPy (Python) | numpy-node | Notes                             |
+| ----------------------------- | :------------: | :--------: | --------------------------------- |
+| **BLAS/LAPACK Backend**       |                |            |                                   |
+| ├─ Apple Accelerate (macOS)   |       ✅       |     ✅     | vecLib, vDSP, LAPACK              |
+| ├─ OpenBLAS (Linux/Windows)   |       ✅       |     ✅     | Multi-threaded BLAS               |
+| └─ Intel MKL (optional)       |       ✅       |     ❌     | Not yet supported                 |
+| **Matrix Operations**         |                |            |                                   |
+| ├─ `dgemm` (matmul)           |       ✅       |     ✅     | Level 3 BLAS                      |
+| ├─ `dgemv` (matrix-vector)    |       ✅       |     ✅     | Level 2 BLAS                      |
+| ├─ `dsyrk` (gram matrix X'X)  |       ✅       |     ✅     | Symmetric rank-k                  |
+| ├─ `dger` (rank-1 update)     |       ✅       |     ❌     | Uses vsmul loop                   |
+| └─ Batch matmul               |       ✅       |     ✅     | Loop over dgemm                   |
+| **Decompositions**            |                |            |                                   |
+| ├─ `dgetrf/dgetrs` (LU solve) |       ✅       |     ✅     | LAPACK                            |
+| ├─ `dgesvd` (SVD)             |       ✅       |     ✅     | LAPACK                            |
+| ├─ `dgeqrf` (QR)              |       ✅       |     ✅     | LAPACK                            |
+| ├─ `dpotrf` (Cholesky)        |       ✅       |     ✅     | LAPACK                            |
+| └─ `dgeev` (Eigendecomp)      |       ✅       |     ✅     | LAPACK                            |
+| **SIMD Vectorization**        |                |            |                                   |
+| ├─ vDSP (macOS)               |       ✅       |     ✅     | sum, mean, sqrt, etc.             |
+| ├─ AVX/SSE intrinsics         |       ✅       |     ❌     | Via OpenBLAS only                 |
+| └─ NEON (ARM)                 |       ✅       |     ✅     | Via Accelerate                    |
+| **Fused Operations**          |                |            | numpy-node reduces N-API overhead |
+| ├─ `normalize` (z-score)      |       ❌       |     ✅     | (x - μ) / σ                       |
+| ├─ `layer_norm`               |       ❌       |     ✅     | With γ, β params                  |
+| ├─ `batch_norm`               |       ❌       |     ✅     | Over batch dim                    |
+| ├─ `softmax`                  |       ❌       |     ✅     | Numerically stable                |
+| ├─ `softmax_cross_entropy`    |       ❌       |     ✅     | Log-sum-exp trick                 |
+| ├─ `minmax_scale`             |       ❌       |     ✅     | [0,1] scaling                     |
+| ├─ `adam_step`                |       ❌       |     ✅     | Optimizer update                  |
+| ├─ `sumsq`                    |       ❌       |     ✅     | Σx² (vDSP_svesqD)                 |
+| ├─ `axpby`                    |    partial     |     ✅     | αx + βy                           |
+| └─ `muladd`                   |    partial     |     ✅     | a\*b + c                          |
+| **Domain-Specific**           |                |            |                                   |
+| ├─ `black_scholes`            |       ❌       |     ✅     | Option pricing                    |
+| ├─ `tfidf`                    |       ❌       |     ✅     | Text processing                   |
+| ├─ `dropout`                  |       ❌       |     ✅     | Neural networks                   |
+| ├─ `cross_entropy`            |       ❌       |     ✅     | Loss function                     |
+| ├─ `power_iter`               |       ❌       |     ✅     | Eigenvalue approx                 |
+| ├─ `batched_attention`        |       ❌       |     ✅     | Transformer attention             |
+| └─ `heat_step_2d`             |       ❌       |     ✅     | PDE solver                        |
+| **Memory**                    |                |            |                                   |
+| ├─ Contiguous arrays          |       ✅       |     ✅     | Row-major (C order)               |
+| ├─ View/stride support        |       ✅       |     ✅     | Zero-copy reshape                 |
+| ├─ In-place operations        |       ✅       |     ✅     | `add_inplace`, etc.               |
+| └─ Memory pooling             |       ✅       |     ❌     | Not implemented                   |
+
+### Benchmark Results
+
+In real-world benchmarks (56 scenarios), numpy-node wins **65-70%** of scenarios:
+
+| Category                  | numpy-node Advantage | Reason                                    |
+| ------------------------- | -------------------- | ----------------------------------------- |
+| **Fused ML ops**          | 2-3x faster          | Single native call vs multiple Python ops |
+| **Loop-heavy algorithms** | 30-300x faster       | Native C++ vs Python interpreter          |
+| **Statistics**            | 1.5-2.5x faster      | vDSP vectorization                        |
+| **Large reductions**      | 1.5-2x faster        | vDSP_sveD, vDSP_meanvD                    |
+
+| Category                     | NumPy Advantage | Reason                            |
+| ---------------------------- | --------------- | --------------------------------- |
+| **Small array creation**     | 2-5x faster     | Lower per-operation overhead      |
+| **Outer/Kronecker products** | 1.5-2x faster   | Highly optimized C implementation |
+| **Pure BLAS ops**            | 1-1.5x faster   | Tighter C integration             |
+
+See `benchmarks/cross-platform/REAL_WORLD_RESULTS.md` for detailed results.
+
 ## Security
 
 This package uses [npm Trusted Publishing](https://docs.npmjs.com/generating-provenance-statements) with cryptographic provenance attestation. Every release is built in GitHub Actions and signed, providing a verifiable link between the published package and its source code.

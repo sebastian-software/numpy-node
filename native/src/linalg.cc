@@ -1514,6 +1514,190 @@ Napi::Value NormalEquations(const Napi::CallbackInfo& info) {
 }
 
 /**
+ * Gram matrix: X'X
+ * Computes the Gram matrix using dsyrk for optimal performance.
+ * For X with shape (m, n), returns (n, n) symmetric matrix.
+ */
+Napi::Value Gram(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1) {
+        Napi::TypeError::New(env, "Expected matrix X").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* X = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    const auto& shapeX = X->shape();
+
+    if (shapeX.size() != 2) {
+        Napi::TypeError::New(env, "X must be 2D").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int m = static_cast<int>(shapeX[0]); // rows
+    int n = static_cast<int>(shapeX[1]); // cols
+    double* dataX = static_cast<double*>(X->data());
+
+    // Create result array (n x n)
+    Napi::Array resultShape = Napi::Array::New(env, 2);
+    resultShape.Set(uint32_t(0), Napi::Number::New(env, n));
+    resultShape.Set(uint32_t(1), Napi::Number::New(env, n));
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        resultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataR = static_cast<double*>(resultArr->data());
+
+#if defined(USE_ACCELERATE)
+    // Use dsyrk: C = alpha * A' * A + beta * C
+    // For row-major X (m x n), we compute X' * X which is n x n
+    cblas_dsyrk(CblasRowMajor, CblasUpper, CblasTrans,
+                n, m,           // n = result size, k = inner dimension (m)
+                1.0, dataX, n,  // A = X, lda = n (stride = cols)
+                0.0, dataR, n); // C = result, ldc = n
+
+    // Fill lower triangle (dsyrk only fills upper)
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < i; j++) {
+            dataR[i * n + j] = dataR[j * n + i];
+        }
+    }
+#elif defined(USE_OPENBLAS) || defined(USE_LAPACK)
+    // Fortran dsyrk with row-major data
+    char uplo = 'L';  // Lower triangle in Fortran = Upper in C (row-major)
+    char trans = 'N'; // No transpose in Fortran convention for X'X
+    double alpha = 1.0;
+    double beta = 0.0;
+
+    dsyrk_(&uplo, &trans, &n, &m, &alpha, dataX, &n, &beta, dataR, &n);
+
+    // Fill other triangle
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            dataR[i * n + j] = dataR[j * n + i];
+        }
+    }
+#else
+    // Fallback: compute X'X directly
+    for (int i = 0; i < n; i++) {
+        for (int j = i; j < n; j++) {
+            double sum = 0.0;
+            for (int k = 0; k < m; k++) {
+                sum += dataX[k * n + i] * dataX[k * n + j];
+            }
+            dataR[i * n + j] = sum;
+            if (i != j) {
+                dataR[j * n + i] = sum;
+            }
+        }
+    }
+#endif
+
+    return result;
+}
+
+/**
+ * X'y: Compute X transposed times y using optimized BLAS operations.
+ * For X with shape (m, n) and y with shape (m,) or (m, k), returns (n,) or (n, k).
+ * Much faster than matmul(X.T, y) for tall matrices.
+ */
+Napi::Value Xty(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2) {
+        Napi::TypeError::New(env, "Expected matrix X and vector/matrix y").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    NativeNDArray* X = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[0].As<Napi::Object>());
+    NativeNDArray* y = Napi::ObjectWrap<NativeNDArray>::Unwrap(info[1].As<Napi::Object>());
+    const auto& shapeX = X->shape();
+    const auto& shapeY = y->shape();
+
+    if (shapeX.size() != 2) {
+        Napi::TypeError::New(env, "X must be 2D").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int m = static_cast<int>(shapeX[0]); // rows of X
+    int n = static_cast<int>(shapeX[1]); // cols of X
+    double* dataX = static_cast<double*>(X->data());
+    double* dataY = static_cast<double*>(y->data());
+
+    // Determine nrhs (number of right-hand sides)
+    int nrhs = 1;
+    bool isVector = (shapeY.size() == 1);
+    if (shapeY.size() == 2) {
+        nrhs = static_cast<int>(shapeY[1]);
+    }
+
+    // Check dimensions match
+    int yRows = isVector ? static_cast<int>(shapeY[0]) : static_cast<int>(shapeY[0]);
+    if (yRows != m) {
+        Napi::TypeError::New(env, "X rows must match y rows").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Create result array
+    Napi::Array resultShape = Napi::Array::New(env, isVector ? 1 : 2);
+    resultShape.Set(uint32_t(0), Napi::Number::New(env, n));
+    if (!isVector) {
+        resultShape.Set(uint32_t(1), Napi::Number::New(env, nrhs));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({
+        resultShape, Napi::String::New(env, "float64"), Napi::Boolean::New(env, true)
+    });
+    NativeNDArray* resultArr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+    double* dataR = static_cast<double*>(resultArr->data());
+
+#if defined(USE_ACCELERATE)
+    if (nrhs == 1) {
+        // Vector case: use dgemv
+        cblas_dgemv(CblasRowMajor, CblasTrans, m, n,
+                    1.0, dataX, n, dataY, 1,
+                    0.0, dataR, 1);
+    } else {
+        // Matrix case: use dgemm
+        cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                    n, nrhs, m,
+                    1.0, dataX, n, dataY, nrhs,
+                    0.0, dataR, nrhs);
+    }
+#elif defined(USE_OPENBLAS) || defined(USE_LAPACK)
+    if (nrhs == 1) {
+        // For Fortran dgemv with row-major X: treat as n x m column-major
+        char trans = 'N'; // No transpose in Fortran for X' in row-major
+        int inc = 1;
+        double alpha = 1.0;
+        double beta = 0.0;
+        dgemv_(&trans, &n, &m, &alpha, dataX, &n, dataY, &inc, &beta, dataR, &inc);
+    } else {
+        // For Fortran dgemm
+        char transA = 'N';
+        char transB = 'N';
+        double alpha = 1.0;
+        double beta = 0.0;
+        dgemm_(&transA, &transB, &n, &nrhs, &m, &alpha, dataX, &n, dataY, &m, &beta, dataR, &n);
+    }
+#else
+    // Fallback: compute X'y directly
+    for (int j = 0; j < nrhs; j++) {
+        for (int i = 0; i < n; i++) {
+            double sum = 0.0;
+            for (int k = 0; k < m; k++) {
+                sum += dataX[k * n + i] * dataY[k * nrhs + j];
+            }
+            dataR[i * nrhs + j] = sum;
+        }
+    }
+#endif
+
+    return result;
+}
+
+/**
  * Batch matrix multiplication - reduces N-API overhead by doing multiple
  * matmuls in a single native call.
  * batch_matmul(As, Bs) where As and Bs are arrays of 2D matrices
@@ -1787,6 +1971,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     linalg.Set("trace", Napi::Function::New(env, Trace));
     linalg.Set("lstsq", Napi::Function::New(env, Lstsq));
     linalg.Set("normal_equations", Napi::Function::New(env, NormalEquations));
+    linalg.Set("gram", Napi::Function::New(env, Gram));
+    linalg.Set("xty", Napi::Function::New(env, Xty));
 
     exports.Set("linalg", linalg);
     return exports;

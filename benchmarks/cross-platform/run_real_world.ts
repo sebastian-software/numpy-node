@@ -69,23 +69,16 @@ function formatMs(ms: number): string {
 }
 
 function formatSpeedup(ratio: number): string {
-  // Yellow for near-parity (within 15% of each other)
-  if (ratio >= 0.85 && ratio <= 1.15) {
-    if (ratio >= 1) {
-      return `\x1b[33m${ratio.toFixed(2)}x faster\x1b[0m`;
-    } else {
-      return `\x1b[33m${(1 / ratio).toFixed(2)}x slower\x1b[0m`;
-    }
-  }
-  // Green for clearly faster
-  if (ratio > 1.15) {
+  // Green: numpy-node is faster (ratio >= 1)
+  if (ratio >= 1) {
     return `\x1b[32m${ratio.toFixed(2)}x faster\x1b[0m`;
   }
-  // Red for clearly slower
-  if (ratio < 0.85) {
-    return `\x1b[31m${(1 / ratio).toFixed(2)}x slower\x1b[0m`;
+  // Yellow: 1-1.25x slower (ratio >= 0.8)
+  if (ratio >= 0.8) {
+    return `\x1b[33m${(1 / ratio).toFixed(2)}x slower\x1b[0m`;
   }
-  return 'same';
+  // Red: >1.25x slower (ratio < 0.8)
+  return `\x1b[31m${(1 / ratio).toFixed(2)}x slower\x1b[0m`;
 }
 
 function generateMarkdownReport(python: BenchmarkOutput, node: BenchmarkOutput): string {
@@ -114,14 +107,14 @@ function generateMarkdownReport(python: BenchmarkOutput, node: BenchmarkOutput):
       if (speedup >= 1) wins++;
 
       let speedupStr: string;
-      if (speedup >= 0.85 && speedup <= 1.15) {
-        // Near parity - yellow/neutral
-        speedupStr = speedup >= 1 ? `~${speedup.toFixed(2)}x` : `~${(1 / speedup).toFixed(2)}x`;
-      } else if (speedup > 1.15) {
-        // Clearly faster - green
+      if (speedup >= 1) {
+        // Green: numpy-node is faster
         speedupStr = `**${speedup.toFixed(2)}x faster**`;
+      } else if (speedup >= 0.8) {
+        // Yellow: 1-1.25x slower
+        speedupStr = `~${(1 / speedup).toFixed(2)}x`;
       } else {
-        // Clearly slower - red
+        // Red: >1.25x slower
         speedupStr = `${(1 / speedup).toFixed(2)}x slower`;
       }
 

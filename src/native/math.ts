@@ -13,29 +13,61 @@ const { math } = native;
 
 /**
  * Element-wise addition
+ * Supports both (array, scalar) and (scalar, array) - commutative
  */
-export function add(a: NDArray, b: NDArray | number): NDArray {
+export function add(a: NDArray | number, b: NDArray | number): NDArray {
+  // Commutative: swap if scalar-first
+  if (typeof a === 'number') {
+    if (!(b instanceof NDArray)) {
+      throw new Error('At least one argument must be an NDArray');
+    }
+    return new NDArray(math.add(b._native, a));
+  }
   return new NDArray(math.add(a._native, b instanceof NDArray ? b._native : b));
 }
 
 /**
  * Element-wise subtraction
+ * Supports both (array, scalar) and (scalar, array)
  */
-export function subtract(a: NDArray, b: NDArray | number): NDArray {
+export function subtract(a: NDArray | number, b: NDArray | number): NDArray {
+  // Non-commutative: need native support for scalar-first
+  if (typeof a === 'number') {
+    if (!(b instanceof NDArray)) {
+      throw new Error('At least one argument must be an NDArray');
+    }
+    return new NDArray(math.subtract_scalar_first(a, b._native));
+  }
   return new NDArray(math.subtract(a._native, b instanceof NDArray ? b._native : b));
 }
 
 /**
  * Element-wise multiplication
+ * Supports both (array, scalar) and (scalar, array) - commutative
  */
-export function multiply(a: NDArray, b: NDArray | number): NDArray {
+export function multiply(a: NDArray | number, b: NDArray | number): NDArray {
+  // Commutative: swap if scalar-first
+  if (typeof a === 'number') {
+    if (!(b instanceof NDArray)) {
+      throw new Error('At least one argument must be an NDArray');
+    }
+    return new NDArray(math.multiply(b._native, a));
+  }
   return new NDArray(math.multiply(a._native, b instanceof NDArray ? b._native : b));
 }
 
 /**
  * Element-wise division
+ * Supports both (array, scalar) and (scalar, array)
  */
-export function divide(a: NDArray, b: NDArray | number): NDArray {
+export function divide(a: NDArray | number, b: NDArray | number): NDArray {
+  // Non-commutative: need native support for scalar-first
+  if (typeof a === 'number') {
+    if (!(b instanceof NDArray)) {
+      throw new Error('At least one argument must be an NDArray');
+    }
+    return new NDArray(math.divide_scalar_first(a, b._native));
+  }
   return new NDArray(math.divide(a._native, b instanceof NDArray ? b._native : b));
 }
 
@@ -131,6 +163,13 @@ export function cos(a: NDArray): NDArray {
  */
 export function tan(a: NDArray): NDArray {
   return new NDArray(math.tan(a._native));
+}
+
+/**
+ * Element-wise hyperbolic tangent
+ */
+export function tanh(a: NDArray): NDArray {
+  return new NDArray(math.tanh(a._native));
 }
 
 // ============================================================
@@ -470,6 +509,65 @@ export function split(
 ): NDArray[] {
   const result = math.split(a._native, indices_or_sections, axis);
   return Array.from(result).map((arr) => new NDArray(arr));
+}
+
+/**
+ * Slice specification type for multi-dimensional slicing
+ * - number: single index (reduces dimension)
+ * - [start, end]: slice from start to end
+ * - [start, end, step]: slice with step
+ * - null: all elements (:)
+ */
+export type SliceSpec = number | [number | null, number | null, number?] | null;
+
+/**
+ * Slice array along multiple dimensions (like NumPy's arr[1:-1, 2:])
+ *
+ * @param a Input array
+ * @param slices Slice specification for each dimension
+ * @returns Sliced array
+ *
+ * @example
+ * // NumPy: arr[1:-1, 2:]
+ * slice(arr, [[1, -1], [2, null]])
+ *
+ * // NumPy: arr[0, :]  (first row)
+ * slice(arr, [0, null])
+ *
+ * // NumPy: arr[:, 1:-1]
+ * slice(arr, [null, [1, -1]])
+ */
+export function slice(a: NDArray, ...slices: SliceSpec[]): NDArray {
+  return new NDArray(math.slice(a._native, slices));
+}
+
+/**
+ * Compute 2D gradient using central differences
+ * Interior uses central differences, edges use forward/backward differences
+ *
+ * @param f 2D input array
+ * @param h Grid spacing (default 1.0)
+ * @returns Object with dfdx and dfdy gradient arrays
+ */
+export function gradient_2d(f: NDArray, h: number = 1.0): { dfdx: NDArray; dfdy: NDArray } {
+  const result = math.gradient_2d(f._native, h);
+  return {
+    dfdx: new NDArray(result.dfdx),
+    dfdy: new NDArray(result.dfdy),
+  };
+}
+
+/**
+ * Perform multiple heat equation time steps using 5-point stencil
+ * T_new = T + alpha * (laplacian(T))
+ *
+ * @param T 2D temperature array
+ * @param alpha Thermal diffusivity coefficient (dt * k / (dx^2))
+ * @param nSteps Number of time steps to perform
+ * @returns New temperature array after nSteps
+ */
+export function heat_step_2d(T: NDArray, alpha: number, nSteps: number): NDArray {
+  return new NDArray(math.heat_step_2d(T._native, alpha, nSteps));
 }
 
 /**
@@ -923,4 +1021,232 @@ export function muladd(a: NDArray, b: NDArray | number, c: NDArray | number): ND
  */
 export function softmax(x: NDArray, axis?: number): NDArray {
   return new NDArray(math.softmax(x._native, axis));
+}
+
+/**
+ * Min-max feature scaling
+ *
+ * Scales data to [0, 1] range along the specified axis:
+ * minmax_scale(x) = (x - min(x)) / (max(x) - min(x))
+ *
+ * Fused operation that computes min, max, subtraction and division
+ * in a single native call, reducing N-API overhead.
+ *
+ * @param x Input array
+ * @param axis Axis along which to scale (default: 0)
+ * @returns Scaled array with values in [0, 1]
+ */
+export function minmax_scale(x: NDArray, axis: number = 0): NDArray {
+  return new NDArray(math.minmax_scale(x._native, axis));
+}
+
+/**
+ * Batch normalization
+ *
+ * Normalizes input using: (x - mean) / sqrt(var + eps) * gamma + beta
+ *
+ * Fused operation that computes mean, variance, normalization, scale and shift
+ * in a single native call, reducing N-API overhead from 6+ calls to 1.
+ *
+ * @param x Input array (2D: samples x features)
+ * @param gamma Scale parameter (1D: features), optional
+ * @param beta Shift parameter (1D: features), optional
+ * @param axis Axis along which to normalize (default: 0)
+ * @param eps Small constant for numerical stability (default: 1e-5)
+ * @returns Normalized array
+ */
+export function batch_norm(
+  x: NDArray,
+  gamma?: NDArray,
+  beta?: NDArray,
+  axis: number = 0,
+  eps: number = 1e-5
+): NDArray {
+  return new NDArray(math.batch_norm(x._native, gamma?._native, beta?._native, axis, eps));
+}
+
+// ============================================================
+// Optimizer Operations (fused for performance)
+// ============================================================
+
+/**
+ * Adam optimizer step - fused for maximum performance.
+ * Updates m and v in-place and returns new parameters.
+ *
+ * @param params Current parameters (not modified)
+ * @param grads Gradients
+ * @param m First moment (modified in-place)
+ * @param v Second moment (modified in-place)
+ * @param lr Learning rate
+ * @param beta1 First moment decay rate (default: 0.9)
+ * @param beta2 Second moment decay rate (default: 0.999)
+ * @param eps Epsilon for numerical stability (default: 1e-8)
+ * @param t Current timestep
+ * @returns New parameters
+ */
+export function adam_step(
+  params: NDArray,
+  grads: NDArray,
+  m: NDArray,
+  v: NDArray,
+  lr: number,
+  beta1: number = 0.9,
+  beta2: number = 0.999,
+  eps: number = 1e-8,
+  t: number
+): NDArray {
+  return new NDArray(
+    math.adam_step(params._native, grads._native, m._native, v._native, lr, beta1, beta2, eps, t)
+  );
+}
+
+/**
+ * Power iteration for computing dominant eigenvalue/eigenvector.
+ * Runs n_iters iterations of: v = M @ v; v = v / ||v||
+ *
+ * @param M Square matrix (n x n)
+ * @param v Initial vector (n,)
+ * @param n_iters Number of iterations
+ * @returns Final eigenvector estimate
+ */
+export function power_iter(M: NDArray, v: NDArray, n_iters: number): NDArray {
+  return new NDArray(math.power_iter(M._native, v._native, n_iters));
+}
+
+/**
+ * Fused batched attention: softmax(Q @ K^T) @ V
+ * Performs the full attention computation in a single native call.
+ *
+ * @param Q Query tensor [batch, seq, dim]
+ * @param K Key tensor [batch, seq, dim]
+ * @param V Value tensor [batch, seq, dim]
+ * @returns Attention output [batch, seq, dim]
+ */
+export function batched_attention(Q: NDArray, K: NDArray, V: NDArray): NDArray {
+  return new NDArray(math.batched_attention(Q._native, K._native, V._native));
+}
+
+/**
+ * Fused Black-Scholes option pricing
+ *
+ * Computes call option prices using the Black-Scholes formula with
+ * logistic approximation for the normal CDF.
+ *
+ * @param S - Spot prices array
+ * @param K - Strike price (scalar)
+ * @param T - Time to expiry array
+ * @param r - Risk-free rate (scalar)
+ * @param sigma - Volatility array
+ * @returns Call option prices
+ */
+export function black_scholes(
+  S: NDArray,
+  K: number,
+  T: NDArray,
+  r: number,
+  sigma: NDArray
+): NDArray {
+  return new NDArray(math.black_scholes(S._native, K, T._native, r, sigma._native));
+}
+
+/**
+ * Fused TF-IDF computation
+ *
+ * Computes TF-IDF (Term Frequency-Inverse Document Frequency) in a single
+ * native call, avoiding N-API overhead from multiple operations.
+ *
+ * @param tf - Term frequency matrix [nDocs, nTerms]
+ * @returns TF-IDF matrix [nDocs, nTerms]
+ */
+export function tfidf(tf: NDArray): NDArray {
+  return new NDArray(math.tfidf(tf._native));
+}
+
+/**
+ * Fused dropout forward pass
+ *
+ * Generates a random mask and applies it to the input in a single
+ * native call, avoiding N-API overhead from multiple operations.
+ *
+ * @param x - Input array
+ * @param p - Dropout probability (probability of setting to 0)
+ * @param seed - Optional random seed
+ * @returns Object with output and mask arrays
+ */
+export function dropout(x: NDArray, p: number, seed?: number): { output: NDArray; mask: NDArray } {
+  const result = math.dropout(x._native, p, seed);
+  return {
+    output: new NDArray(result.output),
+    mask: new NDArray(result.mask),
+  };
+}
+
+/**
+ * Fused cross-entropy loss
+ *
+ * Computes softmax cross-entropy loss in a single native call.
+ *
+ * @param predictions - Logits [nSamples, nClasses]
+ * @param targets - One-hot encoded targets [nSamples, nClasses]
+ * @returns Scalar loss value
+ */
+export function cross_entropy(predictions: NDArray, targets: NDArray): number {
+  return math.cross_entropy(predictions._native, targets._native);
+}
+
+/**
+ * Fused sum of squares: sum(x*x, axis)
+ *
+ * Replaces the common pattern: sum(multiply(x, x), axis)
+ * Single N-API call instead of two.
+ *
+ * @param a - Input array
+ * @param axis - Optional axis to reduce along
+ * @param keepdims - Whether to keep the reduced dimension
+ * @returns Sum of squares (scalar or array depending on axis)
+ */
+export function sumsq(a: NDArray, axis?: number, keepdims?: boolean): NDArray | number {
+  const result = math.sumsq(a._native, axis, keepdims);
+  if (typeof result === 'number') {
+    return result;
+  }
+  return new NDArray(result);
+}
+
+/**
+ * Fused layer normalization: (x - mean) / std * gamma + beta
+ *
+ * Replaces the common pattern: affine(zscore(x, axis), gamma, beta)
+ * Single N-API call instead of two.
+ *
+ * @param x - Input array
+ * @param gamma - Optional scale parameter (per-feature)
+ * @param beta - Optional bias parameter (per-feature)
+ * @param axis - Normalization axis (default 1)
+ * @param eps - Epsilon for numerical stability (default 1e-5)
+ * @returns Normalized array with same shape as input
+ */
+export function layer_norm(
+  x: NDArray,
+  gamma?: NDArray,
+  beta?: NDArray,
+  axis?: number,
+  eps?: number
+): NDArray {
+  return new NDArray(math.layer_norm(x._native, gamma?._native, beta?._native, axis, eps));
+}
+
+/**
+ * Fused softmax cross-entropy loss from logits
+ *
+ * Computes: mean(-sum(labels * log_softmax(logits), axis))
+ * Numerically stable implementation using log-sum-exp trick.
+ *
+ * @param logits - Input logits [nSamples, nClasses]
+ * @param labels - One-hot encoded labels [nSamples, nClasses]
+ * @param axis - Softmax axis (default 1)
+ * @returns Scalar loss value (mean over samples)
+ */
+export function softmax_cross_entropy(logits: NDArray, labels: NDArray, axis?: number): number {
+  return math.softmax_cross_entropy(logits._native, labels._native, axis);
 }

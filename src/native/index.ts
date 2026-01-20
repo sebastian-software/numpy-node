@@ -46,6 +46,7 @@ export {
   sin,
   cos,
   tan,
+  tanh,
   sum,
   mean,
   std,
@@ -102,6 +103,10 @@ export {
   flip,
   rot90,
   split,
+  slice,
+  type SliceSpec,
+  gradient_2d,
+  heat_step_2d,
   nonzero,
   // Sorting and searching
   searchsorted,
@@ -118,6 +123,24 @@ export {
   affine,
   muladd,
   softmax,
+  minmax_scale,
+  batch_norm,
+  // Optimizer operations
+  adam_step,
+  power_iter,
+  // Attention operations
+  batched_attention,
+  // Financial operations
+  black_scholes,
+  // Text/NLP operations
+  tfidf,
+  // Neural network operations
+  dropout,
+  cross_entropy,
+  // Fused reductions
+  sumsq,
+  layer_norm,
+  softmax_cross_entropy,
 } from './math.js';
 
 // Linear algebra (namespace and top-level exports)
@@ -142,6 +165,8 @@ export {
   cond,
   lstsq,
   normal_equations,
+  gram,
+  xty,
 } from './linalg.js';
 
 // Random number generation

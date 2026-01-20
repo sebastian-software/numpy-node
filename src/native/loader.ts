@@ -116,6 +116,8 @@ export interface LinalgModule {
   trace(a: NativeNDArray): number;
   lstsq(a: NativeNDArray, b: NativeNDArray): NativeNDArray;
   normal_equations(X: NativeNDArray, y: NativeNDArray): NativeNDArray;
+  gram(X: NativeNDArray): NativeNDArray;
+  xty(X: NativeNDArray, y: NativeNDArray): NativeNDArray;
 }
 
 /**
@@ -126,6 +128,9 @@ export interface MathModule {
   subtract(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
   multiply(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
   divide(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
+  // Scalar-first variants for non-commutative operations
+  subtract_scalar_first(scalar: number, b: NativeNDArray): NativeNDArray;
+  divide_scalar_first(scalar: number, b: NativeNDArray): NativeNDArray;
   power(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
   // In-place operations (modifies first argument, returns same array)
   add_inplace(a: NativeNDArray, b: NativeNDArray | number): NativeNDArray;
@@ -138,6 +143,7 @@ export interface MathModule {
   sin(a: NativeNDArray): NativeNDArray;
   cos(a: NativeNDArray): NativeNDArray;
   tan(a: NativeNDArray): NativeNDArray;
+  tanh(a: NativeNDArray): NativeNDArray;
   sum(a: NativeNDArray, axis?: number, keepdims?: boolean): NativeNDArray | number;
   prod(a: NativeNDArray, axis?: number): NativeNDArray | number;
   mean(a: NativeNDArray, axis?: number, keepdims?: boolean): NativeNDArray | number;
@@ -163,6 +169,12 @@ export interface MathModule {
   flip(a: NativeNDArray, axis?: number | number[]): NativeNDArray;
   rot90(a: NativeNDArray, k?: number, axes?: number[]): NativeNDArray;
   split(a: NativeNDArray, indices_or_sections: number | number[], axis?: number): NativeNDArray[];
+  slice(
+    a: NativeNDArray,
+    slices: (number | [number | null, number | null, number?] | null)[]
+  ): NativeNDArray;
+  gradient_2d(f: NativeNDArray, h?: number): { dfdx: NativeNDArray; dfdy: NativeNDArray };
+  heat_step_2d(T: NativeNDArray, alpha: number, nSteps: number): NativeNDArray;
   nonzero(a: NativeNDArray): NativeNDArray[];
   // Element-wise math (additional)
   sign(a: NativeNDArray): NativeNDArray;
@@ -213,6 +225,55 @@ export interface MathModule {
   ): NativeNDArray;
   muladd(a: NativeNDArray, b: NativeNDArray | number, c: NativeNDArray | number): NativeNDArray;
   softmax(x: NativeNDArray, axis?: number): NativeNDArray;
+  minmax_scale(x: NativeNDArray, axis?: number): NativeNDArray;
+  batch_norm(
+    x: NativeNDArray,
+    gamma?: NativeNDArray,
+    beta?: NativeNDArray,
+    axis?: number,
+    eps?: number
+  ): NativeNDArray;
+  // Optimizer operations
+  adam_step(
+    params: NativeNDArray,
+    grads: NativeNDArray,
+    m: NativeNDArray,
+    v: NativeNDArray,
+    lr: number,
+    beta1: number,
+    beta2: number,
+    eps: number,
+    t: number
+  ): NativeNDArray;
+  power_iter(M: NativeNDArray, v: NativeNDArray, n_iters: number): NativeNDArray;
+  batched_attention(Q: NativeNDArray, K: NativeNDArray, V: NativeNDArray): NativeNDArray;
+  // Financial operations
+  black_scholes(
+    S: NativeNDArray,
+    K: number,
+    T: NativeNDArray,
+    r: number,
+    sigma: NativeNDArray
+  ): NativeNDArray;
+  // Text/NLP operations
+  tfidf(tf: NativeNDArray): NativeNDArray;
+  // Neural network operations
+  dropout(
+    x: NativeNDArray,
+    p: number,
+    seed?: number
+  ): { output: NativeNDArray; mask: NativeNDArray };
+  cross_entropy(predictions: NativeNDArray, targets: NativeNDArray): number;
+  // Fused reductions
+  sumsq(a: NativeNDArray, axis?: number, keepdims?: boolean): NativeNDArray | number;
+  layer_norm(
+    x: NativeNDArray,
+    gamma?: NativeNDArray,
+    beta?: NativeNDArray,
+    axis?: number,
+    eps?: number
+  ): NativeNDArray;
+  softmax_cross_entropy(logits: NativeNDArray, labels: NativeNDArray, axis?: number): number;
 }
 
 /**
@@ -221,6 +282,7 @@ export interface MathModule {
 export interface RandomModule {
   seed(value: number): void;
   random(shape: number[]): NativeNDArray;
+  rand(...shape: number[]): NativeNDArray;
   uniform(low: number, high: number, shape: number[]): NativeNDArray;
   normal(mean: number, std: number, shape: number[]): NativeNDArray;
   randn(...shape: number[]): NativeNDArray;

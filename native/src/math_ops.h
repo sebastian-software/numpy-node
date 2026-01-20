@@ -14,6 +14,10 @@ Napi::Value Multiply(const Napi::CallbackInfo& info);
 Napi::Value Divide(const Napi::CallbackInfo& info);
 Napi::Value Power(const Napi::CallbackInfo& info);
 
+// Scalar-first operations (for non-commutative ops like scalar - array)
+Napi::Value SubtractScalarFirst(const Napi::CallbackInfo& info);
+Napi::Value DivideScalarFirst(const Napi::CallbackInfo& info);
+
 // In-place arithmetic (modifies first argument)
 Napi::Value AddInplace(const Napi::CallbackInfo& info);
 Napi::Value SubtractInplace(const Napi::CallbackInfo& info);
@@ -27,6 +31,7 @@ Napi::Value Log(const Napi::CallbackInfo& info);
 Napi::Value Sin(const Napi::CallbackInfo& info);
 Napi::Value Cos(const Napi::CallbackInfo& info);
 Napi::Value Tan(const Napi::CallbackInfo& info);
+Napi::Value Tanh(const Napi::CallbackInfo& info);
 Napi::Value Abs(const Napi::CallbackInfo& info);
 Napi::Value Round(const Napi::CallbackInfo& info);
 Napi::Value Floor(const Napi::CallbackInfo& info);
@@ -63,6 +68,9 @@ Napi::Value Repeat(const Napi::CallbackInfo& info);
 Napi::Value Flip(const Napi::CallbackInfo& info);
 Napi::Value Rot90(const Napi::CallbackInfo& info);
 Napi::Value Split(const Napi::CallbackInfo& info);
+Napi::Value Slice(const Napi::CallbackInfo& info);
+Napi::Value Gradient2D(const Napi::CallbackInfo& info);
+Napi::Value HeatStep2D(const Napi::CallbackInfo& info);
 Napi::Value Nonzero(const Napi::CallbackInfo& info);
 
 // Element-wise math (additional)
@@ -102,6 +110,28 @@ Napi::Value Normalize(const Napi::CallbackInfo& info);  // (x - mean) / std
 Napi::Value Affine(const Napi::CallbackInfo& info);     // x * scale + bias
 Napi::Value MulAdd(const Napi::CallbackInfo& info);     // a * b + c
 Napi::Value Softmax(const Napi::CallbackInfo& info);    // numerically stable softmax
+
+// Optimizer fused operations
+Napi::Value AdamStep(const Napi::CallbackInfo& info);   // Full Adam optimizer step
+Napi::Value PowerIter(const Napi::CallbackInfo& info);  // Power iteration for eigenvalue
+
+// Attention operations
+Napi::Value BatchedAttention(const Napi::CallbackInfo& info);  // Fused batched attention
+
+// Financial operations
+Napi::Value BlackScholes(const Napi::CallbackInfo& info);  // Fused Black-Scholes pricing
+
+// Text/NLP operations
+Napi::Value TFIDF(const Napi::CallbackInfo& info);  // Fused TF-IDF computation
+
+// Neural network operations
+Napi::Value Dropout(const Napi::CallbackInfo& info);  // Fused dropout forward pass
+Napi::Value CrossEntropy(const Napi::CallbackInfo& info);  // Fused cross-entropy loss
+
+// Fused reductions (reduce N-API overhead for common patterns)
+Napi::Value Sumsq(const Napi::CallbackInfo& info);     // sum(x*x, axis) - squared norm
+Napi::Value LayerNorm(const Napi::CallbackInfo& info); // (x - mean) / std * gamma + beta
+Napi::Value SoftmaxCrossEntropyFromLogits(const Napi::CallbackInfo& info); // -sum(labels * log_softmax(logits))
 
 /**
  * Initialize math module

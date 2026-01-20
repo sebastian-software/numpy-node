@@ -380,6 +380,139 @@ Napi::Value Generator::Binomial(const Napi::CallbackInfo& info) {
 static PCG64 globalRng(static_cast<uint64_t>(
     std::chrono::high_resolution_clock::now().time_since_epoch().count()));
 
+// Set global RNG seed
+Napi::Value Seed(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+        Napi::TypeError::New(env, "Expected seed value").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    uint64_t seed = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
+    globalRng = PCG64(seed);
+    return env.Undefined();
+}
+
+// Random uniform [0, 1) with array shape argument
+Napi::Value Random(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsArray()) {
+        // Return scalar
+        return Napi::Number::New(env, globalRng.uniform());
+    }
+
+    Napi::Array shapeArr = info[0].As<Napi::Array>();
+    std::vector<int64_t> shape(shapeArr.Length());
+    for (size_t i = 0; i < shapeArr.Length(); i++) {
+        shape[i] = shapeArr.Get(i).As<Napi::Number>().Int64Value();
+    }
+
+    Napi::Array shapeNapi = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        shapeNapi.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({shapeNapi, Napi::String::New(env, "float64")});
+    NativeNDArray* arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+
+    double* data = static_cast<double*>(arr->data());
+    int64_t size = arr->size();
+
+    for (int64_t i = 0; i < size; i++) {
+        data[i] = globalRng.uniform();
+    }
+
+    return result;
+}
+
+// Normal distribution with mean, std, shape
+Napi::Value Normal(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    double mean = 0.0, stddev = 1.0;
+    std::vector<int64_t> shape;
+
+    if (info.Length() >= 1 && info[0].IsNumber()) {
+        mean = info[0].As<Napi::Number>().DoubleValue();
+    }
+    if (info.Length() >= 2 && info[1].IsNumber()) {
+        stddev = info[1].As<Napi::Number>().DoubleValue();
+    }
+    if (info.Length() >= 3 && info[2].IsArray()) {
+        Napi::Array shapeArr = info[2].As<Napi::Array>();
+        shape.resize(shapeArr.Length());
+        for (size_t i = 0; i < shapeArr.Length(); i++) {
+            shape[i] = shapeArr.Get(i).As<Napi::Number>().Int64Value();
+        }
+    }
+
+    if (shape.empty()) {
+        return Napi::Number::New(env, mean + stddev * globalRng.normal());
+    }
+
+    Napi::Array shapeNapi = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        shapeNapi.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({shapeNapi, Napi::String::New(env, "float64")});
+    NativeNDArray* arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+
+    double* data = static_cast<double*>(arr->data());
+    int64_t size = arr->size();
+
+    for (int64_t i = 0; i < size; i++) {
+        data[i] = mean + stddev * globalRng.normal();
+    }
+
+    return result;
+}
+
+// Uniform distribution in [low, high)
+Napi::Value Uniform(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    double low = 0.0, high = 1.0;
+    std::vector<int64_t> shape;
+
+    if (info.Length() >= 1 && info[0].IsNumber()) {
+        low = info[0].As<Napi::Number>().DoubleValue();
+    }
+    if (info.Length() >= 2 && info[1].IsNumber()) {
+        high = info[1].As<Napi::Number>().DoubleValue();
+    }
+    if (info.Length() >= 3 && info[2].IsArray()) {
+        Napi::Array shapeArr = info[2].As<Napi::Array>();
+        shape.resize(shapeArr.Length());
+        for (size_t i = 0; i < shapeArr.Length(); i++) {
+            shape[i] = shapeArr.Get(i).As<Napi::Number>().Int64Value();
+        }
+    }
+
+    double range = high - low;
+
+    if (shape.empty()) {
+        return Napi::Number::New(env, low + range * globalRng.uniform());
+    }
+
+    Napi::Array shapeNapi = Napi::Array::New(env, shape.size());
+    for (size_t i = 0; i < shape.size(); i++) {
+        shapeNapi.Set(uint32_t(i), Napi::Number::New(env, static_cast<double>(shape[i])));
+    }
+
+    Napi::Object result = NativeNDArray::constructor.New({shapeNapi, Napi::String::New(env, "float64")});
+    NativeNDArray* arr = Napi::ObjectWrap<NativeNDArray>::Unwrap(result);
+
+    double* data = static_cast<double*>(arr->data());
+    int64_t size = arr->size();
+
+    for (int64_t i = 0; i < size; i++) {
+        data[i] = low + range * globalRng.uniform();
+    }
+
+    return result;
+}
+
 Napi::Value Rand(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -512,8 +645,12 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
     Generator::Init(env, random);
 
+    random.Set("seed", Napi::Function::New(env, Seed));
+    random.Set("random", Napi::Function::New(env, Random));
     random.Set("rand", Napi::Function::New(env, Rand));
     random.Set("randn", Napi::Function::New(env, Randn));
+    random.Set("normal", Napi::Function::New(env, Normal));
+    random.Set("uniform", Napi::Function::New(env, Uniform));
     random.Set("randint", Napi::Function::New(env, Randint));
 
     exports.Set("random", random);

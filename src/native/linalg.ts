@@ -171,6 +171,25 @@ export function normal_equations(X: NDArray, y: NDArray): NDArray {
 }
 
 /**
+ * Gram matrix: X'X
+ * Computes the Gram matrix using optimized dsyrk BLAS operation.
+ * For X with shape (m, n), returns (n, n) symmetric matrix.
+ * Much faster than matmul(X.T, X) for tall matrices.
+ */
+export function gram(X: NDArray): NDArray {
+  return new NDArray(linalg.gram(X._native));
+}
+
+/**
+ * X'y - transposed matrix-vector multiplication.
+ * Computes X.T @ y using optimized dgemv/dgemm BLAS operations.
+ * Much faster than matmul(X.T, y) as it avoids explicit transpose.
+ */
+export function xty(X: NDArray, y: NDArray): NDArray {
+  return new NDArray(linalg.xty(X._native, y._native));
+}
+
+/**
  * Condition number
  */
 export function cond(a: NDArray): number {
