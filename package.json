@@ -58,21 +58,21 @@
     "node": ">=22.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.18.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.0",
-    "@vitest/coverage-v8": "^2.1.0",
-    "cmake-js": "^7.3.0",
-    "eslint": "^9.18.0",
+    "@vitest/coverage-v8": "^4.1.6",
+    "cmake-js": "^8.0.0",
+    "eslint": "^10.4.0",
     "husky": "^9.1.7",
-    "lint-staged": "^16.2.7",
+    "lint-staged": "^17.0.5",
     "node-addon-api": "^8.3.0",
     "prettier": "^3.4.0",
     "tinybench": "^6.0.0",
     "tsup": "^8.3.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.0",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.20.0",
-    "vitest": "^2.1.0"
+    "vitest": "^4.1.6"
   },
   "peerDependencies": {
     "node-addon-api": "^8.3.0"
